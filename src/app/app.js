@@ -8,6 +8,8 @@ const app = express();
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(bodyParser.json({ limit: "50mb" }));
+app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
 
 // List of allowed origins
 const allowedOrigins = [
@@ -30,9 +32,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-app.use(bodyParser.json({ limit: "50mb" }));
-app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
 
 //routes
 
