@@ -8,12 +8,28 @@ const app = express();
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
-app.use(
-  cors({
-    origin: "https://efootball-center.netlify.app/",
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  })
-);
+
+// List of allowed origins
+const allowedOrigins = [
+  "https://efootball-center.netlify.app", // Your production frontend
+  "http://localhost:5173", // Your development frontend
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg =
+        "The CORS policy for this site does not allow access from the specified Origin.";
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+};
+
+app.use(cors(corsOptions));
 
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
