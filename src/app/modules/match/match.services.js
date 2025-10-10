@@ -107,7 +107,7 @@ const submitSquadAndGenerateSubMatches = async (
       match.team2_squad &&
       match.team2_squad.star_player
     ) {
-      console.log("Both squads are in! Generating sub-matches...");
+      console.log("Both squads are in! Generating sub-matches");
 
       // --- Step 5: Generate the Sub-Matches Based on Roles ---
 
