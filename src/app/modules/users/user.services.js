@@ -9,32 +9,36 @@ import { Tournament } from "../tournaments/tournament.model.js";
 import { Team } from "../team/team.model.js";
 
 const registerUserIntoDb = async (userData) => {
-  const userAlreadyExists = await User.findOne({ email: userData.email });
-  if (userAlreadyExists) {
-    throw new ApiError(400, "User already exists.");
+  try {
+    const userAlreadyExists = await User.findOne({ email: userData.email });
+    if (userAlreadyExists) {
+      throw new ApiError(400, "User already exists.");
+    }
+
+    if (userData.image) {
+      const { secure_url, public_id } = await cloudinary.uploader.upload(
+        userData.image,
+        {
+          upload_preset: "efootball",
+          transformation: { fetch_format: "auto", quality: "auto" },
+        }
+      );
+      userData.image = { url: secure_url, public_id };
+    }
+
+    const hashedPassword = await bcrypt.hash(userData.password, 10);
+
+    const user = new User({
+      ...userData,
+      password: hashedPassword,
+    });
+
+    await user.save();
+
+    return user;
+  } catch (error) {
+    throw new ApiError(error.statusCode || 500, error.message);
   }
-
-  if (userData.image) {
-    const { secure_url, public_id } = await cloudinary.uploader.upload(
-      userData.image,
-      {
-        upload_preset: "efootball",
-        transformation: { fetch_format: "auto", quality: "auto" },
-      }
-    );
-    userData.image = { url: secure_url, public_id };
-  }
-
-  const hashedPassword = await bcrypt.hash(userData.password, 10);
-
-  const user = new User({
-    ...userData,
-    password: hashedPassword,
-  });
-
-  await user.save();
-
-  return user;
 };
 
 const login = async (credentials) => {

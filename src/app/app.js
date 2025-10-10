@@ -3,6 +3,8 @@ import cors from "cors";
 import router from "./routes/routes.js";
 import ErrorHandler from "./middlewares/ErrorHandler.js";
 import bodyParser from "body-parser";
+import dotenv from "dotenv";
+dotenv.config();
 
 const app = express();
 
