@@ -77,6 +77,21 @@ const getSingleTournamentFromDB = async (tournamentId) => {
   return response;
 };
 
+//update tournament status
+const updateTournamentStatusInDB = async (tournamentId, status) => {
+  const validStatuses = ["Upcoming", "Live", "Completed", "Published"];
+  if (!validStatuses.includes(status)) {
+    throw new ApiError(400, "Invalid status value");
+  }
+  const tournament = await Tournament.findById(tournamentId);
+  if (!tournament) {
+    throw new ApiError(404, "Tournament not found");
+  }
+  tournament.status = status;
+  await tournament.save();
+  return tournament;
+};
+
 const generateRoundRobinFixtures = async (tournamentId, teamIds) => {
   try {
     // --- 1. Input Validation ---
@@ -464,6 +479,7 @@ export const TournamentServices = {
   createTournamentIntoDB,
   getAllTournamentsFromDB,
   getSingleTournamentFromDB,
+  updateTournamentStatusInDB,
   generateRoundRobinFixtures,
   getRegisteredTournamentsFromDB,
   generatePhase1Leaderboard,

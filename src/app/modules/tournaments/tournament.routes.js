@@ -20,6 +20,12 @@ router.get(
 );
 
 router.patch(
+  "/update-status/:id",
+  auth(USER_ROLES.admin),
+  TournamentControllers.updateTournamentStatus
+);
+
+router.patch(
   "/generateRoundRobinFixtures/:id",
   auth(USER_ROLES.admin),
   TournamentControllers.generateRoundRobinFixtures

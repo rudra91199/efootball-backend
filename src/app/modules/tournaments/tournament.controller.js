@@ -5,9 +5,7 @@ import { Tournament } from "./tournament.model.js";
 import { TournamentServices } from "./tournament.services.js";
 
 const createTournament = catchAsync(async (req, res) => {
-  const response = await TournamentServices.createTournamentIntoDB(
-    req.body
-  );
+  const response = await TournamentServices.createTournamentIntoDB(req.body);
   sendResponse(res, {
     success: true,
     statusCode: 201,
@@ -41,14 +39,28 @@ const getSingleTournament = catchAsync(async (req, res) => {
 
 const getRegisteredTournaments = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const response = await TournamentServices.getRegisteredTournamentsFromDB(
-    id
-  );
+  const response = await TournamentServices.getRegisteredTournamentsFromDB(id);
   sendResponse(res, {
     success: true,
     statusCode: 200,
     message: "Registered tournaments retrieved successfully.",
     data: response,
+  });
+});
+
+// Controller to update tournament status
+const updateTournamentStatus = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const updatedTournament = await TournamentServices.updateTournamentStatusInDB(
+    id,
+    status
+  );
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Tournament status updated successfully.",
+    data: updatedTournament,
   });
 });
 
@@ -143,6 +155,7 @@ export const TournamentControllers = {
   createTournament,
   getAllTournaments,
   getSingleTournament,
+  updateTournamentStatus,
   generateRoundRobinFixtures,
   getRegisteredTournaments,
   generatePhase1Leaderbaord,
