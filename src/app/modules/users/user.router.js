@@ -21,6 +21,18 @@ router.get(
   UserController.checkAuth
 );
 
+router.patch(
+  "/editProfile",
+  auth(USER_ROLES.admin, USER_ROLES.player),
+  UserController.editProfile
+);
+
+router.patch(
+  "/changePassword",
+  auth(USER_ROLES.admin, USER_ROLES.player),
+  UserController.changePassword
+);
+
 router.get("/getAllUsers", auth(USER_ROLES.admin), UserController.getAllUsers);
 
 router.get(

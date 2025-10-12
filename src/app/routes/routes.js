@@ -5,6 +5,7 @@ import { teamRoutes } from "../modules/team/team.routes.js";
 import { MatchRoutes } from "../modules/match/match.routes.js";
 import { MatchHistoryRoutes } from "../modules/matchHistory/matchHistory.routes.js";
 import { LeagueRoutes } from "../modules/league/league.route.js";
+import { RulesRoutes } from "../modules/rules/rules.routes.js";
 
 const router = Router();
 
@@ -32,6 +33,10 @@ const moduleRoutes = [
   {
     path: "/matchHistory",
     router: MatchHistoryRoutes,
+  },
+  {
+    path: "/rules",
+    router: RulesRoutes,
   },
 ];
 

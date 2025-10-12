@@ -34,6 +34,30 @@ const checkAuth = catchAsync(async (req, res) => {
   });
 });
 
+const editProfile = catchAsync(async (req, res) => {
+  const { userId } = req.user;
+  const profileData = req.body;
+  const response = await UserServices.editProfile(userId, profileData);
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Profile updated successfully",
+    data: response,
+  });
+});
+
+const changePassword = catchAsync(async (req, res) => {
+  const { userId } = req.user;
+  const { currentPassword, newPassword } = req.body;
+  await UserServices.changePassword(userId, currentPassword, newPassword);
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Password changed successfully",
+    data: null,
+  });
+});
+
 const getAllUsers = catchAsync(async (req, res) => {
   const response = await UserServices.getAllUsersFromDB();
   sendResponse(res, {
@@ -164,8 +188,10 @@ export const UserController = {
   registerUser,
   loginUser,
   checkAuth,
+  editProfile,
   getAllUsers,
   getUsersFroRegistration,
+  changePassword,
   //player data
   getPlayerTournaments,
   getGlobalLeaderboard,

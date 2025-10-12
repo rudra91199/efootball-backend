@@ -75,34 +75,54 @@ const checkAuth = async (userId) => {
   return user;
 };
 
-// export const changePassword = async (req, res) => {
-//   const { currentPassword, newPassword } = req.body;
-//   const { userId } = req;
-//   try {
-//     const user = await authModel.findById(userId);
-//     if (!user) return res.status(404).json({ message: "User not found." });
-//     const isMatch = await bcrypt.compare(currentPassword, user.password);
-//     if (!isMatch) {
-//       return res
-//         .status(401)
-//         .json({ message: "Current password is incorrect." });
-//     }
-//     const hashedPassword = await bcrypt.hash(newPassword, 12);
-//     user.password = hashedPassword;
-//     await user.save();
-//     res.status(200).json({
-//       success: true,
-//       message: "Password changed successfully.",
-//     });
-//   } catch (error) {
-//     console.error("Change password error:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Internal server error",
-//       error: error.message,
-//     });
-//   }
-// };
+const editProfile = async (userId, profileData) => {
+  const { image, newImage, ...rest } = profileData;
+  let userImage = image;
+  console.log(rest);
+  try {
+    if (newImage) {
+      await cloudinary.uploader.destroy(userImage?.public_id);
+      const { secure_url, public_id } = await cloudinary.uploader.upload(
+        newImage,
+        {
+          upload_preset: "efootball",
+          transformation: { fetch_format: "auto", quality: "auto" },
+        }
+      );
+      userImage = { url: secure_url, public_id };
+    }
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { ...rest, image: userImage },
+      { new: true }
+    ).select("-password");
+    const { name, inGameUserName, inGameUserId, phone, phoneModel, image } =
+      updatedUser;
+    return {
+      name,
+      inGameUserName,
+      inGameUserId,
+      phone,
+      phoneModel,
+      image,
+    };
+  } catch (error) {
+    throw new ApiError(500, "Error updating profile.");
+  }
+};
+
+const changePassword = async (userId, currentPassword, newPassword) => {
+  const user = await User.findById(userId);
+  if (!user) throw new ApiError(404, "User not found.");
+  const isMatch = await bcrypt.compare(currentPassword, user.password);
+  if (!isMatch) {
+    throw new ApiError(400, "Current password is incorrect.");
+  }
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
+  user.password = hashedPassword;
+  await user.save();
+  return true;
+};
 
 const getAllUsersFromDB = async () => {
   const users = await User.find().select("-password");
@@ -653,6 +673,8 @@ export const UserServices = {
   registerUserIntoDb,
   login,
   checkAuth,
+  editProfile,
+  changePassword,
   //playerData
   getAllUsersFromDB,
   getAllUsersFroRegistration,
