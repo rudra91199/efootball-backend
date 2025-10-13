@@ -63,6 +63,7 @@ const matchSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "Team", // Can be null until the match is completed
     },
+    orangeCardedPlayers: [{ type: Schema.Types.ObjectId, ref: 'users' }],
     details: {
       subMatches: [
         {

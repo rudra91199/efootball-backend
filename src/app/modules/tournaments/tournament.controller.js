@@ -151,6 +151,17 @@ export const startPhase3 = async (req, res) => {
   });
 };
 
+const getPlayerStatusesForTournament = catchAsync(async (req, res) => {
+  const { tournamentId } = req.params;
+  const statusMap = await TournamentServices.getPlayerStatusesForTournament(tournamentId);
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "Player statuses retrieved successfully.",
+    data: statusMap,
+  });
+});
+
 export const TournamentControllers = {
   createTournament,
   getAllTournaments,
@@ -162,4 +173,5 @@ export const TournamentControllers = {
   generatePhase2fixtures,
   generateFinalSeedingLeaderboard,
   startPhase3,
+  getPlayerStatusesForTournament
 };
