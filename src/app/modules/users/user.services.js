@@ -739,7 +739,12 @@ const issueCardToPlayer = async (issuerId, payload) => {
   return null;
 };
 
+<<<<<<< HEAD
 const liftPlayerBan = async (playerId) => {
+=======
+const liftPlayerBan = async (req, res) => {
+  const { playerId } = req.params;
+>>>>>>> 68e2601ab896a3c3a013b6b427ae226b62f63c9f
   const updatedPlayer = await User.findByIdAndUpdate(
     playerId,
     { $set: { isBanned: false, banLiftDate: null, activeYellowCards: [] } },
