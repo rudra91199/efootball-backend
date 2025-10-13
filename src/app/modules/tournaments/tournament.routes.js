@@ -61,4 +61,10 @@ router.patch(
   TournamentControllers.startPhase3
 );
 
+router.get(
+  "/:tournamentId/playerStatuses",
+  auth(USER_ROLES.admin, USER_ROLES.player),
+  TournamentControllers.getPlayerStatusesForTournament
+);
+
 export const TournamentRoutes = router;

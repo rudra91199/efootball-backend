@@ -21,6 +21,19 @@ const userSchema = new Schema({
   lastLogin: { type: Date },
   isDeleted: { type: Boolean, default: false },
   passwordChangedAt: { type: Date },
+  // --- Disciplinary Fields ---
+  isBanned: {
+    type: Boolean,
+    default: false,
+  },
+  banLiftDate: {
+    type: Date,
+    default: null,
+  },
+  activeYellowCards: [{
+    cardId: { type: Schema.Types.ObjectId, ref: 'DisciplinaryAction' },
+    expiryDate: { type: Date }
+  }],
   matchHistory: [
     {
       type: Schema.Types.ObjectId,

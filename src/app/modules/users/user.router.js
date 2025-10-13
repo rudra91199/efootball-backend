@@ -83,4 +83,16 @@ router.get(
   UserController.getPlayerScoringStats
 );
 
+router.post(
+  "/issue-card",
+  auth(USER_ROLES.admin),
+  UserController.issueCardToPlayer
+);
+
+router.patch(
+  "/liftBan/:playerId",
+  auth(USER_ROLES.admin),
+  UserController.liftPlayerBan
+);
+
 export const UserRoutes = router;

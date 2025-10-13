@@ -51,12 +51,24 @@ const getAllRegisteredTeamFromTournament = async (tournamentId) => {
 };
 
 const updateTeamStatus = async (teamId, status) => {
-  const response = await Team.findByIdAndUpdate(
-    teamId,
-    { status },
-    { new: true }
-  );
-  return response;
+  if (status === "Approved") {
+    const response = await Team.findByIdAndUpdate(
+      teamId,
+      { status },
+      { new: true }
+    );
+    return response;
+  } else if (status === "Rejected") {
+    const team = await Team.findById(teamId);
+    const removeTeamFromTournament = await Tournament.findOneAndUpdate(
+      { _id: team.tournament },
+      { $pull: { teams: teamId } }
+    );
+    const deleteTeam = await Team.findByIdAndDelete(teamId);
+    return {
+      message: "Team has been rejected and removed successfully",
+    };
+  }
 };
 
 export const TeamServices = {

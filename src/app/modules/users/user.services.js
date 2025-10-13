@@ -7,6 +7,8 @@ import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import mongoose from "mongoose";
 import { Tournament } from "../tournaments/tournament.model.js";
 import { Team } from "../team/team.model.js";
+import { Match } from "../match/match.model.js";
+import { DisciplinaryAction } from "../disciplinaryActions/disciplinaryActions.model.js";
 
 const registerUserIntoDb = async (userData) => {
   try {
@@ -78,7 +80,6 @@ const checkAuth = async (userId) => {
 const editProfile = async (userId, profileData) => {
   const { image, newImage, ...rest } = profileData;
   let userImage = image;
-  console.log(rest);
   try {
     if (newImage) {
       await cloudinary.uploader.destroy(userImage?.public_id);
@@ -669,6 +670,85 @@ export async function findAllCareerMilestones(playerId) {
   return milestones;
 }
 
+const issueCardToPlayer = async (issuerId, payload) => {
+  const { matchId, playerId, cardType, reason, tournamentId } = payload;
+  const player = await User.findById(playerId);
+  if (!player) return new ApiError(404, "Player not found.");
+
+  let actionLog;
+  // --- Orange Card Logic ---
+  if (cardType === "Orange") {
+    // Add the player to the match's orange card list.
+    await Match.findByIdAndUpdate(matchId, {
+      $addToSet: { orangeCardedPlayers: playerId },
+    });
+  }
+
+  // --- Red Card Logic ---
+  if (cardType === "Red") {
+    player.isBanned = true;
+    const banLiftDate = new Date();
+    banLiftDate.setDate(banLiftDate.getDate() + 2); // Add 2 days
+    player.banLiftDate = banLiftDate;
+  }
+
+  // --- Yellow Card Logic ---
+  // (A yellow card is active for 7 days. A second yellow within this time results in a Red Card.)
+  if (cardType === "Yellow") {
+    const now = new Date();
+    // Check if there are any non-expired yellow cards
+    const hasActiveYellow = player.activeYellowCards.some(
+      (card) => card.expiryDate > now
+    );
+
+    if (hasActiveYellow) {
+      // This is the second active yellow card -> becomes a Red Card
+      player.isBanned = true;
+      const banLiftDate = new Date();
+      banLiftDate.setDate(banLiftDate.getDate() + 2); // 2-day ban
+      player.banLiftDate = banLiftDate;
+      player.activeYellowCards = []; // Clear the yellow cards as they've resulted in a red
+    } else {
+      // This is the first active yellow card
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7); // Set expiry to 1 week from now
+      // We will create the disciplinary log first to get its ID
+      actionLog = await DisciplinaryAction.create({
+        player: playerId,
+        tournament: tournamentId,
+        cardType,
+        reason,
+        issuedBy: issuerId,
+      });
+      player.activeYellowCards.push({ cardId: actionLog._id, expiryDate });
+    }
+  }
+
+  await player.save();
+  // ... (Log the action in DisciplinaryAction collection for records) ...
+  if (!actionLog) {
+    actionLog = await DisciplinaryAction.create({
+      player: playerId,
+      match: cardType === "orange" ? matchId : null,
+      tournament: tournamentId,
+      cardType,
+      reason,
+      issuedBy: issuerId,
+    });
+  }
+  return null;
+};
+
+const liftPlayerBan = async (req, res) => {
+  const { playerId } = req.params;
+  const updatedPlayer = await User.findByIdAndUpdate(
+    playerId,
+    { $set: { isBanned: false, banLiftDate: null, activeYellowCards: [] } },
+    { new: true }
+  );
+  return null;
+};
+
 export const UserServices = {
   registerUserIntoDb,
   login,
@@ -687,4 +767,6 @@ export const UserServices = {
   generatePlayerCareerHighlights,
   generateScoringRecords,
   findAllCareerMilestones,
+  issueCardToPlayer,
+  liftPlayerBan,
 };

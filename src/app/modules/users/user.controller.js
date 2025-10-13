@@ -184,6 +184,29 @@ const getPlayerScoringStats = async (req, res) => {
   });
 };
 
+const issueCardToPlayer = catchAsync(async (req, res) => {
+  const { userId } = req.user;
+  const payload = req.body;
+  await UserServices.issueCardToPlayer(userId, payload);
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Card issued successfully",
+    data: null,
+  });
+});
+
+const liftPlayerBan = catchAsync(async (req, res) => {
+  const { playerId } = req.params;
+  await UserServices.liftPlayerBan(playerId);
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Player ban lifted successfully",
+    data: null,
+  });
+});
+
 export const UserController = {
   registerUser,
   loginUser,
@@ -200,4 +223,6 @@ export const UserController = {
   getPlayerMatchHistory,
   getPlayerFullStats,
   getPlayerScoringStats,
+  issueCardToPlayer,
+  liftPlayerBan,
 };

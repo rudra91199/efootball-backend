@@ -5,6 +5,7 @@ import ApiError from "../../errors/ApiError.js";
 import { ChampionshipPoint } from "../championshipPoint/championshipPoint.model.js";
 import { League } from "../league/league.model.js";
 import { Team } from "../team/team.model.js";
+import { User } from "../users/user.model.js";
 
 const createTournamentIntoDB = async (payload) => {
   let phases = [];
@@ -475,6 +476,38 @@ export async function generatePhase3Fixtures(tournamentId) {
   }
 }
 
+const getPlayerStatusesForTournament = async (tournamentId) => {
+  try {
+    // 1. Find the tournament to get a list of all participating team IDs
+    const tournament = await Tournament.findById(tournamentId).select("teams");
+    if (!tournament) {
+      return new ApiError(404, "Tournament not found.");
+    }
+
+    // 2. Find all players on those teams
+    const teams = await Team.find({ _id: { $in: tournament.teams } }).select(
+      "players"
+    );
+    const playerIds = teams.flatMap((team) => team.players);
+
+    // 3. Fetch the status for all those players at once
+    const playersWithStatus = await User.find({
+      _id: { $in: playerIds },
+    }).select("name isBanned banLiftDate activeYellowCards");
+
+    // 4. Convert the array to an object (a map) for easy lookup on the frontend
+    const statusMap = {};
+    playersWithStatus.forEach((player) => {
+      statusMap[player._id] = player;
+    });
+
+    return statusMap;
+  } catch (error) {
+    console.error("Error fetching player statuses:", error);
+    throw new ApiError(500, "Server error.");
+  }
+};
+
 export const TournamentServices = {
   createTournamentIntoDB,
   getAllTournamentsFromDB,
@@ -486,4 +519,5 @@ export const TournamentServices = {
   generatePhase2GauntletFixtures,
   generateFinalSeedingLeaderboard,
   generatePhase3Fixtures,
+  getPlayerStatusesForTournament,
 };
