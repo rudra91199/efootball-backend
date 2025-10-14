@@ -10,6 +10,7 @@ const userSchema = new Schema({
     type: Object,
     required: true,
   },
+  baseTeamName: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   status: { type: String, enum: ["active", "blocked"], default: "active" },
@@ -30,10 +31,12 @@ const userSchema = new Schema({
     type: Date,
     default: null,
   },
-  activeYellowCards: [{
-    cardId: { type: Schema.Types.ObjectId, ref: 'DisciplinaryAction' },
-    expiryDate: { type: Date }
-  }],
+  activeYellowCards: [
+    {
+      cardId: { type: Schema.Types.ObjectId, ref: "DisciplinaryAction" },
+      expiryDate: { type: Date },
+    },
+  ],
   matchHistory: [
     {
       type: Schema.Types.ObjectId,
