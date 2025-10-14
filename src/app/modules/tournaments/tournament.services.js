@@ -49,9 +49,16 @@ const createTournamentIntoDB = async (payload) => {
 };
 
 const getAllTournamentsFromDB = async () => {
-  const response = await Tournament.find();
+  const response = await Tournament.find({
+    status: { $ne: "unPublished" },
+  }).sort({ createdAt: -1 });
   return response;
 };
+
+const getAllTournamentsForAdminFromDB = async () => {
+  const response = await Tournament.find().sort({ createdAt: -1 });
+  return response;
+}
 
 const getSingleTournamentFromDB = async (tournamentId) => {
   const response = await Tournament.findById(tournamentId)
@@ -511,6 +518,7 @@ const getPlayerStatusesForTournament = async (tournamentId) => {
 export const TournamentServices = {
   createTournamentIntoDB,
   getAllTournamentsFromDB,
+  getAllTournamentsForAdminFromDB,
   getSingleTournamentFromDB,
   updateTournamentStatusInDB,
   generateRoundRobinFixtures,

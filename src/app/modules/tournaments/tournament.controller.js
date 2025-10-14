@@ -24,6 +24,16 @@ const getAllTournaments = catchAsync(async (req, res) => {
   });
 });
 
+const getAllTournamentsForAdmin = catchAsync(async (req, res) => {
+  const response = await TournamentServices.getAllTournamentsForAdminFromDB();
+  sendResponse(res, {
+    success: true,
+    statusCode: 200,
+    message: "All tournaments retrieved successfully.",
+    data: response,
+  });
+});
+
 const getSingleTournament = catchAsync(async (req, res) => {
   const { tournamentId } = req.params;
   const response = await TournamentServices.getSingleTournamentFromDB(
@@ -153,7 +163,9 @@ export const startPhase3 = async (req, res) => {
 
 const getPlayerStatusesForTournament = catchAsync(async (req, res) => {
   const { tournamentId } = req.params;
-  const statusMap = await TournamentServices.getPlayerStatusesForTournament(tournamentId);
+  const statusMap = await TournamentServices.getPlayerStatusesForTournament(
+    tournamentId
+  );
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -173,5 +185,6 @@ export const TournamentControllers = {
   generatePhase2fixtures,
   generateFinalSeedingLeaderboard,
   startPhase3,
-  getPlayerStatusesForTournament
+  getPlayerStatusesForTournament,
+  getAllTournamentsForAdmin,
 };

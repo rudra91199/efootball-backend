@@ -58,8 +58,8 @@ const tournamentSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["Upcoming", "Live", "Completed", "Published"],
-      default: "Upcoming",
+      enum: ["Upcoming", "Live", "Completed", "Published", "unPublished"],
+      default: "unPublished",
     },
     maxTeams: {
       type: Number,

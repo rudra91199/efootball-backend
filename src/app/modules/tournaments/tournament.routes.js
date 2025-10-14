@@ -14,6 +14,12 @@ router.post(
 router.get("/all", TournamentControllers.getAllTournaments);
 
 router.get(
+  "/admin/all",
+  auth(USER_ROLES.admin),
+  TournamentControllers.getAllTournamentsForAdmin
+)
+
+router.get(
   "/:tournamentId",
   auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   TournamentControllers.getSingleTournament

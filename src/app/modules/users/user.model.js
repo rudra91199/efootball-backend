@@ -26,6 +26,7 @@ const userSchema = new Schema({
   isBanned: {
     type: Boolean,
     default: false,
+    
   },
   banLiftDate: {
     type: Date,
