@@ -113,7 +113,7 @@ const submitSquadAndGenerateSubMatches = async (
 
       const subMatches = [
         {
-          match_type: "Star Player",
+          matchType: "Star Player",
           player1: match.team1_squad.star_player,
           player2: match.team2_squad.star_player,
           player1Score: null, // To be filled in by an admin later
@@ -121,7 +121,7 @@ const submitSquadAndGenerateSubMatches = async (
           winner: null,
         },
         {
-          match_type: "First Day Player",
+          matchType: "First Day Player",
           player1: match.team1_squad.first_day_player,
           player2: match.team2_squad.first_day_player,
           player1Score: null, // To be filled in by an admin later
@@ -129,7 +129,7 @@ const submitSquadAndGenerateSubMatches = async (
           winner: null,
         },
         {
-          match_type: "Late Night Player",
+          matchType: "Late Night Player",
           player1: match.team1_squad.late_night_player,
           player2: match.team2_squad.late_night_player,
           player1Score: null, // To be filled in by an admin later
@@ -354,13 +354,21 @@ async function updateHistoryAfterSubMatch(subMatch, matchInfo) {
 
 const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
   try {
-    const { player1Score, player2Score } = scores;
+    const { player1Score, player2Score, winnerId } = scores;
 
     // 1. Find the main match and the specific sub-match
-    const match = await Match.findById(matchId).populate({
-      path: "tournament",
-      populate: { path: "phases" },
-    });
+    const match = await Match.findById(matchId)
+      .populate({
+        path: "tournament",
+        populate: { path: "phases" },
+      })
+      .populate({
+        path: "team1 team2",
+        populate: {
+          path: "players",
+          select: "_id",
+        },
+      });
     if (!match) throw new ApiError(404, "Match not found");
 
     const subMatch = match.details.subMatches.id(subMatchId);
@@ -374,20 +382,57 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
       subMatch.winner = subMatch.player1.toString();
     else if (player2Score > player1Score)
       subMatch.winner = subMatch.player2.toString();
-    else subMatch.winner = "Draw";
+    else {
+      const phase = match.tournament.phases.find((p) =>
+        p._id.equals(match.phase)
+      );
+      const isKnockoutStage = phase?.phaseOrder > 1;
+
+      if (isKnockoutStage) {
+        if (!winnerId)
+          throw new ApiError(
+            400,
+            "A penalty winner must be provided for a draw in a knockout match."
+          );
+        subMatch.winner = winnerId;
+      } else {
+        const phase = match.tournament.phases.find((p) =>
+          p._id.equals(match.phase)
+        );
+        const isKnockoutStage = phase?.phaseOrder > 1;
+
+        if (isKnockoutStage) {
+          if (!winnerId)
+            throw new ApiError(
+              400,
+              "A penalty winner must be provided for a draw in a knockout match."
+            );
+          subMatch.winner = winnerId;
+        } else {
+          subMatch.winner = "Draw";
+        }
+      }
+    }
 
     // 3. Recalculate and update the main team scores for a live scoreboard
     let team1Points = 0;
     let team2Points = 0;
     match.details.subMatches.forEach((sm) => {
       if (sm.status === "Completed") {
-        if (sm.player1Score > sm.player2Score) {
-          team1Points += 3; // 3 points for a win
-        } else if (sm.player2Score > sm.player1Score) {
-          team2Points += 3; // 3 points for a win
+        if (sm.winner === "Draw") {
+          team1Points += 1;
+          team2Points += 1;
         } else {
-          team1Points += 1; // 1 point for a draw
-          team2Points += 1; // 1 point for a draw
+          // A player won
+          const winnerPlayerId = sm.winner;
+          const isWinnerInTeam1 = match.team1.players.some((p) =>
+            p._id.equals(winnerPlayerId)
+          );
+          if (isWinnerInTeam1) {
+            team1Points += 3;
+          } else {
+            team2Points += 3;
+          }
         }
       }
     });
