@@ -58,7 +58,7 @@ const getAllTournamentsFromDB = async () => {
 const getAllTournamentsForAdminFromDB = async () => {
   const response = await Tournament.find().sort({ createdAt: -1 });
   return response;
-}
+};
 
 const getSingleTournamentFromDB = async (tournamentId) => {
   const response = await Tournament.findById(tournamentId)
@@ -202,29 +202,32 @@ const getRegisteredTournamentsFromDB = async (userId) => {
 
 export async function generatePhase1Leaderboard(tournamentId) {
   try {
-    // --- 1. Fetch all necessary data from the database ---
+    // 1. Fetch all necessary data with deep population
     const tournament = await Tournament.findById(tournamentId)
       .populate({
         path: "phases",
-        // Populate the matches within the phases
         populate: {
           path: "matches",
-          // Populate the teams within the matches
-          populate: { path: "team1 team2" },
+          populate: [
+            // Populate multiple fields within each match
+            {
+              path: "team1 team2",
+              populate: {
+                path: "players",
+                select: "_id", // We only need the player IDs for comparison
+              },
+            },
+          ],
         },
       })
       .populate("teams");
 
-    if (!tournament) {
-      throw new ApiError(404, "Tournament not found");
-    }
+    if (!tournament) throw new Error("Tournament not found");
 
     const phase1 = tournament.phases.find((p) => p.phaseOrder === 1);
-    if (!phase1) {
-      throw new ApiError(404, "Phase 1 not found for this tournament");
-    }
+    if (!phase1) throw new Error("Phase 1 not found");
 
-    // --- 2. Initialize a stats object for each team ---
+    // 2. Initialize stats for each team (unchanged)
     const teamStats = new Map();
     tournament.teams.forEach((team) => {
       teamStats.set(team._id.toString(), {
@@ -240,7 +243,7 @@ export async function generatePhase1Leaderboard(tournamentId) {
       });
     });
 
-    // --- 3. Process each completed match in Phase 1 ---
+    // 3. Process each completed match
     const completedMatches = phase1.matches.filter(
       (m) => m.status === "Completed"
     );
@@ -251,58 +254,68 @@ export async function generatePhase1Leaderboard(tournamentId) {
       const stats1 = teamStats.get(team1Id);
       const stats2 = teamStats.get(team2Id);
 
-      // Update stats for both teams
       stats1.matchesPlayed += 1;
       stats2.matchesPlayed += 1;
-      stats1.goalsFor += match.team1_score;
-      stats1.goalsAgainst += match.team2_score;
-      stats2.goalsFor += match.team2_score;
-      stats2.goalsAgainst += match.team1_score;
 
-      // Determine result and award points
+      // --- REVISED GOAL CALCULATION LOGIC ---
+      let matchGoalsForTeam1 = 0;
+      let matchGoalsForTeam2 = 0;
+
+      for (const subMatch of match.details.subMatches) {
+        // Find which team player1 of the sub-match belongs to
+        const isPlayer1OnTeam1 = match.team1.players.some((p) =>
+          p._id.equals(subMatch.player1)
+        );
+
+        if (isPlayer1OnTeam1) {
+          matchGoalsForTeam1 += subMatch.player1Score;
+          matchGoalsForTeam2 += subMatch.player2Score;
+        } else {
+          matchGoalsForTeam1 += subMatch.player2Score;
+          matchGoalsForTeam2 += subMatch.player1Score;
+        }
+      }
+
+      stats1.goalsFor += matchGoalsForTeam1;
+      stats1.goalsAgainst += matchGoalsForTeam2;
+      stats2.goalsFor += matchGoalsForTeam2;
+      stats2.goalsAgainst += matchGoalsForTeam1;
+      // --- END OF REVISION ---
+
+      // Point calculation logic remains the same
       if (match.winner === null) {
-        // Draw
         stats1.draws += 1;
         stats2.draws += 1;
         stats1.points += 1;
         stats2.points += 1;
       } else if (match.winner.toString() === team1Id) {
-        // Team 1 won
         stats1.wins += 1;
         stats2.losses += 1;
         stats1.points += 3;
       } else {
-        // Team 2 won
         stats2.wins += 1;
         stats1.losses += 1;
         stats2.points += 3;
       }
     }
 
-    // --- 4. Finalize calculations and convert to an array ---
+    // 4. Finalize calculations and sort (unchanged)
     const leaderboardArray = Array.from(teamStats.values());
     leaderboardArray.forEach((team) => {
       team.goalDifference = team.goalsFor - team.goalsAgainst;
     });
 
-    // --- 5. Sort the leaderboard ---
     leaderboardArray.sort((a, b) => {
-      // 1. Sort by Points (descending)
-      if (a.points !== b.points) {
-        return b.points - a.points;
-      }
-      // 2. If points are equal, sort by Goal Difference (descending)
-      if (a.goalDifference !== b.goalDifference) {
+      if (a.points !== b.points) return b.points - a.points;
+      if (a.goalDifference !== b.goalDifference)
         return b.goalDifference - a.goalDifference;
-      }
-      // 3. If GD is equal, sort by Goals For (descending)
       return b.goalsFor - a.goalsFor;
     });
 
     return leaderboardArray;
   } catch (error) {
     console.error("Error generating leaderboard:", error);
-    return []; // Return an empty array on error
+    return [];
   }
 }
 

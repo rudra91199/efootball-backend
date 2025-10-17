@@ -39,7 +39,7 @@ const generateFixtures = async (leagueId) => {
   if (!league) throw new Error("League not found.");
   // ... (rest of your validation)
 
-  if (league.participants.length < 9) {
+  if (league.participants.length < league.maxParticipants) {
     throw new ApiError(400, "Not enough participants to generate fixtures.");
   }
 
