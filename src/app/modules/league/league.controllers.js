@@ -51,17 +51,7 @@ const publishRounds = catchAsync(async (req, res) => {
   });
 });
 
-const scoreUpdate = catchAsync(async (req, res) => {
-  const { matchId } = req.params;
 
-  const response = await LeagueServices.updateMatchScore(matchId, req.body);
-  sendResponse(res, {
-    success: true,
-    message: "Score updated successfully",
-    data: response,
-    statusCode: 200,
-  });
-});
 
 const generateLeaderboard = catchAsync(async (req, res) => {
   const { leagueId } = req.params;
@@ -74,11 +64,13 @@ const generateLeaderboard = catchAsync(async (req, res) => {
     statusCode: 200,
   });
 });
+
+
+
 export const LeagueControllers = {
   registerPlayerInLeague,
   generateFixtures,
   getLeagueById,
   publishRounds,
-  scoreUpdate,
   generateLeaderboard,
 };

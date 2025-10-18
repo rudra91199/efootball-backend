@@ -10,7 +10,7 @@ const userSchema = new Schema({
     type: Object,
     required: true,
   },
-  baseTeamName: { type: String, required: true },
+  baseTeamName: { type: String },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   status: { type: String, enum: ["active", "blocked"], default: "active" },
@@ -26,7 +26,6 @@ const userSchema = new Schema({
   isBanned: {
     type: Boolean,
     default: false,
-    
   },
   banLiftDate: {
     type: Date,

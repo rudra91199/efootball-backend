@@ -29,6 +29,9 @@ router.patch(
   MatchControllers.updateScore
 );
 
+router.patch("/submit-score/leagueAndKnockout", MatchControllers.scoreUpdateForLeagueAndKnockout);
+
+
 router.get(
   "/getPlayersByMatch/:matchId",
   auth(USER_ROLES.admin),

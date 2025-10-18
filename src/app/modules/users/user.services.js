@@ -186,7 +186,7 @@ export async function findTournamentsForPlayer(playerId) {
 export async function generateGlobalPlayerLeaderboard() {
   try {
     const globalLeaderboard = await MatchHistory.aggregate([
-      // Stage 1: Group all match records by player and calculate career stats
+      // Stage 1: Group all match records by player and calculate stats
       {
         $group: {
           _id: "$player",
@@ -199,56 +199,56 @@ export async function generateGlobalPlayerLeaderboard() {
         },
       },
 
-      // Stage 2: Add Goal Difference and Win Rate fields
+      // Stage 2: Add calculated fields
       {
         $addFields: {
           goalDifference: { $subtract: ["$goalsScored", "$goalsConceded"] },
+          // --- NEW: Calculate points based on wins and draws ---
+          points: {
+            $add: [{ $multiply: ["$wins", 3] }, "$draws"],
+          },
           winRate: {
-            // Use $cond to prevent division by zero errors
             $cond: {
               if: { $gt: ["$matchesPlayed", 0] },
-              then: {
-                // Formula: (wins / matchesPlayed) * 100
-                $multiply: [{ $divide: ["$wins", "$matchesPlayed"] }, 100],
-              },
-              else: 0, // Default to 0 if no matches played
+              then: { $multiply: [{ $divide: ["$wins", "$matchesPlayed"] }, 100] },
+              else: 0,
             },
           },
         },
       },
 
-      // Stage 3: Round the winRate for a cleaner display
+      // Stage 3: Round the winRate
       {
         $addFields: {
-          winRate: { $round: ["$winRate", 2] }, // Round to 2 decimal places
+          winRate: { $round: ["$winRate", 2] },
         },
       },
 
       // Stage 4: Join with the users collection to get player details
       {
         $lookup: {
-          from: "users", // The name of your players/users collection
+          from: "users",
           localField: "_id",
           foreignField: "_id",
           as: "playerInfo",
         },
       },
-
+      
       // Stage 5: Clean up the playerInfo field
       {
         $unwind: "$playerInfo",
       },
 
-      // Stage 6: Sort the results to create the final ranking
+      // --- Stage 6: REVISED - Sort by points first ---
       {
         $sort: {
-          wins: -1, // Sort by wins descending
-          goalDifference: -1,
-          goalsScored: -1,
+          points: -1,         // 1. Sort by points descending
+          goalDifference: -1, // 2. Then by goal difference descending
+          goalsScored: -1,    // 3. Then by goals scored descending
         },
       },
-
-      // Stage 7: Limit the leaderboard to a Top 100
+      
+      // Stage 7: Limit the leaderboard
       {
         $limit: 100,
       },
@@ -264,17 +264,17 @@ export async function generateGlobalPlayerLeaderboard() {
 export async function generatePlayerLeaderboard(tournamentId) {
   try {
     const leaderboard = await MatchHistory.aggregate([
-      // --- Stage 1: Filter for the correct tournament ---
+      // Stage 1: Filter for the correct tournament
       {
         $match: {
           tournament: new mongoose.Types.ObjectId(tournamentId),
         },
       },
-
-      // --- Stage 2: Group records by player and calculate stats ---
+      
+      // Stage 2: Group records by player and calculate stats
       {
         $group: {
-          _id: "$player", // Group by the player's ID
+          _id: "$player",
           matchesPlayed: { $sum: 1 },
           wins: { $sum: { $cond: [{ $eq: ["$result", "Win"] }, 1, 0] } },
           losses: { $sum: { $cond: [{ $eq: ["$result", "Loss"] }, 1, 0] } },
@@ -284,34 +284,38 @@ export async function generatePlayerLeaderboard(tournamentId) {
         },
       },
 
-      // --- Stage 3: Add the Goal Difference field ---
+      // Stage 3: Add calculated fields, including Points
       {
         $addFields: {
           goalDifference: { $subtract: ["$goalsScored", "$goalsConceded"] },
+          // --- THE FIX: Calculate points ---
+          points: {
+            $add: [{ $multiply: ["$wins", 3] }, "$draws"],
+          },
         },
       },
 
-      // --- Stage 4: Join with the users collection to get player details ---
+      // Stage 4: Join with the users collection to get player details
       {
         $lookup: {
-          from: "users", // The name of your players/users collection
+          from: "users",
           localField: "_id",
           foreignField: "_id",
           as: "playerInfo",
         },
       },
-
-      // --- Stage 5: Clean up the playerInfo field ---
+      
+      // Stage 5: Clean up the playerInfo field
       {
         $unwind: "$playerInfo",
       },
 
-      // --- Stage 6: Sort the results ---
+      // Stage 6: REVISED - Sort by points first
       {
         $sort: {
-          wins: -1, // Sort by wins descending
-          goalDifference: -1, // Then by goal difference descending
-          goalsScored: -1, // Then by goals scored descending
+          points: -1,           // 1. Sort by points descending
+          goalDifference: -1,   // 2. Then by goal difference descending
+          goalsScored: -1,      // 3. Then by goals scored descending
         },
       },
     ]);

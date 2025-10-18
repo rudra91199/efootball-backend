@@ -6,6 +6,7 @@ import { MatchRoutes } from "../modules/match/match.routes.js";
 import { MatchHistoryRoutes } from "../modules/matchHistory/matchHistory.routes.js";
 import { LeagueRoutes } from "../modules/league/league.route.js";
 import { RulesRoutes } from "../modules/rules/rules.routes.js";
+import { KnockoutRoutes } from "../modules/knockout/knockout.route.js";
 
 const router = Router();
 
@@ -25,6 +26,10 @@ const moduleRoutes = [
   {
     path: "/leagues",
     router: LeagueRoutes,
+  },
+  {
+    path: "/knockouts",
+    router: KnockoutRoutes,
   },
   {
     path: "/matches",

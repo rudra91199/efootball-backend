@@ -100,6 +100,18 @@ const updateScore = async (req, res) => {
   });
 };
 
+const scoreUpdateForLeagueAndKnockout = catchAsync(async (req, res) => {
+  const response = await MatchServices.updateMatchScoreForLeagueAndKnockout(
+    req.body
+  );
+  sendResponse(res, {
+    success: true,
+    message: "Score updated successfully",
+    data: response,
+    statusCode: 200,
+  });
+});
+
 const getPlayersByMatch = catchAsync(async (req, res) => {
   const { matchId } = req.params;
   const response = await MatchServices.getPlayersByMatch(matchId);
@@ -130,4 +142,5 @@ export const MatchControllers = {
   updateScore,
   getPlayersByMatch,
   setManOfTheMatch,
+  scoreUpdateForLeagueAndKnockout,
 };

@@ -13,7 +13,6 @@ router.post(
 router.post("/:leagueId/generate-fixtures", LeagueControllers.generateFixtures);
 router.get("/:leagueId", LeagueControllers.getLeagueById);
 router.patch("/:leagueId/publish-rounds", LeagueControllers.publishRounds);
-router.patch("/matches/:matchId/score", LeagueControllers.scoreUpdate);
 router.get(
   "/generate-leaderboard/:leagueId",
   LeagueControllers.generateLeaderboard

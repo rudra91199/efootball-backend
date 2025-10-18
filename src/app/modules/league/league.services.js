@@ -1,4 +1,5 @@
 import ApiError from "../../errors/ApiError.js";
+import { Knockout } from "../knockout/knockout.model.js";
 import { Match } from "../match/match.model.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { Tournament } from "../tournaments/tournament.model.js";
@@ -177,80 +178,6 @@ const publishRounds = async (leagueId, payload) => {
   return result;
 };
 
-export const updateMatchScore = async (matchId, payload) => {
-  const { team1_score, team2_score } = payload;
-
-  // --- 1. Find and Update the Main Match Document ---
-  const match = await Match.findById(matchId);
-  if (!match) {
-    throw new ApiError(404, "Match not found");
-  }
-
-  match.team1_score = team1_score;
-  match.team2_score = team2_score;
-  match.status = "Completed";
-
-  // Determine the winner
-  if (team1_score > team2_score) {
-    match.winner = match.team1;
-  } else if (team2_score > team1_score) {
-    match.winner = match.team2;
-  } else {
-    match.winner = null; // It's a draw
-  }
-
-  await match.save();
-
-  // --- 2. Update the two related MatchHistory Documents ---
-  // Note: For solo tournaments, match.team1 and match.team2 hold player IDs.
-  const player1Id = match.team1;
-  const player2Id = match.team2;
-
-  const player1Result =
-    team1_score > team2_score
-      ? "Win"
-      : team1_score < team2_score
-      ? "Loss"
-      : "Draw";
-  const player2Result =
-    team2_score > team1_score
-      ? "Win"
-      : team2_score < team1_score
-      ? "Loss"
-      : "Draw";
-
-  // Update history for Player 1
-  await MatchHistory.findOneAndUpdate(
-    { match: matchId, player: player1Id },
-    {
-      $set: {
-        scoreFor: team1_score,
-        scoreAgainst: team2_score,
-        result: player1Result,
-      },
-    }
-  );
-
-  // Update history for Player 2
-  await MatchHistory.findOneAndUpdate(
-    { match: matchId, player: player2Id },
-    {
-      $set: {
-        scoreFor: team2_score,
-        scoreAgainst: team1_score,
-        result: player2Result,
-      },
-    }
-  );
-
-  // Optional: After updating history, you could re-trigger your career stat
-  // calculation function here if you want those to update instantly.
-  // await updatePlayerCareerStats(player1Id);
-  // await updatePlayerCareerStats(player2Id);
-
-  return { success: true, match };
-};
-
 export async function generateLeagueLeaderboard(leagueId) {
   try {
     // 1. Fetch the league and populate all its matches and participants
@@ -339,11 +266,12 @@ export async function generateLeagueLeaderboard(leagueId) {
   }
 }
 
+
+
 export const LeagueServices = {
   registerPlayerInLeague,
   generateFixtures,
   getLeagueById,
   publishRounds,
-  updateMatchScore,
   generateLeagueLeaderboard,
 };
