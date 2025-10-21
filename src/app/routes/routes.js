@@ -7,7 +7,7 @@ import { MatchHistoryRoutes } from "../modules/matchHistory/matchHistory.routes.
 import { LeagueRoutes } from "../modules/league/league.route.js";
 import { RulesRoutes } from "../modules/rules/rules.routes.js";
 import { KnockoutRoutes } from "../modules/knockout/knockout.route.js";
-import { SliderMatchRoutes } from "../modules/SliderMatch/sliderMatch.routes.js";
+import { SliderMatchRoutes } from "../modules/sliderMatch/sliderMatch.routes.js";
 
 const router = Router();
 
