@@ -7,6 +7,7 @@ import { MatchHistoryRoutes } from "../modules/matchHistory/matchHistory.routes.
 import { LeagueRoutes } from "../modules/league/league.route.js";
 import { RulesRoutes } from "../modules/rules/rules.routes.js";
 import { KnockoutRoutes } from "../modules/knockout/knockout.route.js";
+import { SliderMatchRoutes } from "../modules/SliderMatch/sliderMatch.routes.js";
 
 const router = Router();
 
@@ -43,6 +44,10 @@ const moduleRoutes = [
     path: "/rules",
     router: RulesRoutes,
   },
+  {
+    path: "/slider-match",
+    router: SliderMatchRoutes,
+  }
 ];
 
 moduleRoutes.forEach((route) => {

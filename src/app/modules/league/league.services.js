@@ -129,7 +129,7 @@ const getLeagueById = async (leagueId) => {
       path: "matches",
       select: "-details -subMatchesGenerated",
       populate: {
-        path: "team1 team2",
+        path: "team1 team2 winner",
         select: "name image",
         model: User,
       },
@@ -265,8 +265,6 @@ export async function generateLeagueLeaderboard(leagueId) {
     return [];
   }
 }
-
-
 
 export const LeagueServices = {
   registerPlayerInLeague,
