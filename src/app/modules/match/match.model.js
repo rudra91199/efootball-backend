@@ -87,6 +87,11 @@ const matchSchema = new Schema(
         },
       ],
     },
+    series:{
+      type: Schema.Types.ObjectId,
+      ref: "Series",
+      default: null
+    },
     status: {
       type: String,
       enum: ["Unpublished", "Scheduled", "Completed"],

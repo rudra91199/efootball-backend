@@ -25,7 +25,19 @@ const getKnockoutById = catchAsync(async (req, res) => {
   });
 });
 
+const publishRounds = catchAsync(async (req, res) => {
+  const { knockoutId } = req.params;
+  const response = await KnockoutServices.publishRounds(knockoutId, req.body);
+  sendResponse(res, {
+    success: true,
+    message: "Rounds published successfully",
+    data: response,
+    statusCode: 200,
+  });
+});
+
 export const KnockoutControllers = {
   getKnockoutById,
-  generateGauntletKnockout
+  generateGauntletKnockout,
+  publishRounds
 };

@@ -17,5 +17,10 @@ router.get(
   "/generate-leaderboard/:leagueId",
   LeagueControllers.generateLeaderboard
 );
+router.post(
+  "/finalize-phase1-and-generate-gauntlet/:leagueId",
+  auth(USER_ROLES.admin),
+  LeagueControllers.finalizePhase1AndGenerateGauntlet
+);
 
 export const LeagueRoutes = router;

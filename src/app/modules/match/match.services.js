@@ -1,7 +1,9 @@
 import ApiError from "../../errors/ApiError.js";
 import { ChampionshipPoint } from "../championshipPoint/championshipPoint.model.js";
 import { Knockout } from "../knockout/knockout.model.js";
+import { runPhase3PagePlayoffEngine } from "../knockout/knockout.services.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
+import { runPhase2GauntletEngine } from "../series/series.service.js";
 import { Tournament } from "../tournaments/tournament.model.js";
 import { generatePhase1Leaderboard } from "../tournaments/tournament.services.js";
 import { User } from "../users/user.model.js";
@@ -723,115 +725,279 @@ export const setManOfTheMatch = async (matchId, playerId) => {
 
 //score update for league and knockout matches
 const updateMatchScoreForLeagueAndKnockout = async (payload) => {
-  try {
-    // The winnerId is optional, only sent for knockout draws
-    const { team1_score, team2_score, _id: matchId, winnerId } = payload;
+  // The winnerId is optional, only sent for knockout draws
+  const { team1_score, team2_score, _id: matchId, winnerId } = payload;
 
-    // 1. Find and update the current match
-    const match = await Match.findById(matchId).populate('knockout');
-    if (!match) {
-      return new ApiError(404, "Match not found");
-    }
-
-    match.team1_score = team1_score;
-    match.team2_score = team2_score;
-    match.status = "Completed";
-
-    // 2. Context-Aware Winner Logic (for knockout draws)
-    if (team1_score > team2_score) {
-      match.winner = match.team1;
-    } else if (team2_score > team1_score) {
-      match.winner = match.team2;
-    } else { // Scores are tied
-      if (match.knockout) { // This is a knockout match
-        if (!winnerId) {
-          return new ApiError(400, "Scores are tied. A penalty winner must be provided for this knockout match.");
-        }
-        match.winner = winnerId;
-      } else { // This is a league match
-        match.winner = null; 
-      }
-    }
-    
-    await match.save();
-
-    // 3. Update the two related MatchHistory Documents
-    const player1Result = match.winner === null ? "Draw" : (match.winner.equals(match.team1) ? "Win" : "Loss");
-    const player2Result = player1Result === "Win" ? "Loss" : (player1Result === "Loss" ? "Win" : "Draw");
-    
-    await MatchHistory.findOneAndUpdate(
-      { match: matchId, player: match.team1 },
-      { $set: { scoreFor: team1_score, scoreAgainst: team2_score, result: player1Result } }
-    );
-    await MatchHistory.findOneAndUpdate(
-      { match: matchId, player: match.team2 },
-      { $set: { scoreFor: team2_score, scoreAgainst: team1_score, result: player2Result } }
-    );
-
-    // 4. Dynamic Knockout Progression Logic
-    if (match.knockout) {
-      const knockoutId = match.knockout._id;
-      const knockout = await Knockout.findById(knockoutId);
-      const tournamentId = knockout.tournament;
-
-      // A) Generate Semi-Finals after all Quarter-Finals are complete
-      if (match.round === 'Quarter-Final') {
-        const completedQFs = await Match.find({ knockout: knockoutId, round: 'Quarter-Final', status: 'Completed' });
-        if (completedQFs.length === 4) {
-          // Find the winners of the specific QF matchups based on seeding
-          const winner1v8 = completedQFs.find(m => m.team1.equals(knockout.participants[0])).winner;
-          const winner4v5 = completedQFs.find(m => m.team1.equals(knockout.participants[3])).winner;
-          const winner2v7 = completedQFs.find(m => m.team1.equals(knockout.participants[1])).winner;
-          const winner3v6 = completedQFs.find(m => m.team1.equals(knockout.participants[2])).winner;
-
-          const semiFinalMatches = [
-            { knockout: knockoutId, tournament: tournamentId, round: 'Semi-Final', team1: winner1v8, team2: winner4v5, status: 'Unpublished' },
-            { knockout: knockoutId, tournament: tournamentId, round: 'Semi-Final', team1: winner2v7, team2: winner3v6, status: 'Unpublished' }
-          ];
-          const createdSemis = await Match.insertMany(semiFinalMatches);
-          
-          const semiFinalsRound = knockout.rounds.find(r => r.roundName === 'Semi-Finals');
-          semiFinalsRound.matches.push(...createdSemis.map(m => m._id));
-          await knockout.save();
-          // Create MatchHistory records for the new semi-final matches
-        }
-      }
-
-      // B) Generate Finals after all Semi-Finals are complete
-      if (match.round === 'Semi-Final') {
-        const completedSFs = await Match.find({ knockout: knockoutId, round: 'Semi-Final', status: 'Completed' });
-        if (completedSFs.length === 2) {
-          const winners = completedSFs.map(m => m.winner);
-          const losers = completedSFs.map(m => m.team1.equals(m.winner) ? m.team2 : m.team1);
-
-          const finalMatches = [
-            { knockout: knockoutId, tournament: tournamentId, round: 'Grand Final', team1: winners[0], team2: winners[1], status: 'Unpublished' },
-            { knockout: knockoutId, tournament: tournamentId, round: '3rd Place Match', team1: losers[0], team2: losers[1], status: 'Unpublished' }
-          ];
-          const createdFinals = await Match.insertMany(finalMatches);
-
-          const finalsRound = knockout.rounds.find(r => r.roundName === 'Finals');
-          finalsRound.matches.push(...createdFinals.map(m => m._id));
-          await knockout.save();
-          // Create MatchHistory records for the new final matches
-        }
-      }
-
-      // C) (Optional) Complete the tournament after the final is played
-      if (match.round === 'Grand Final') {
-        knockout.status = "Completed";
-        await knockout.save();
-        await Tournament.findByIdAndUpdate(tournamentId, { status: "Completed", champion: match.winner });
-      }
-    }
-
-    return { message: "Match score updated successfully", match };
-
-  } catch (error) {
-    console.error("Error updating match score:", error);
-    return new ApiError(500, "Server error");
+  // 1. Find and update the current match
+  const match = await Match.findById(matchId).populate("knockout");
+  if (!match) {
+    throw new ApiError(404, "Match not found");
   }
+
+  match.team1_score = team1_score;
+  match.team2_score = team2_score;
+  match.status = "Completed";
+
+  // 2. Context-Aware Winner Logic (for knockout draws)
+  if (team1_score > team2_score) {
+    match.winner = match.team1;
+  } else if (team2_score > team1_score) {
+    match.winner = match.team2;
+  } else {
+    // Scores are tied
+    if (match.knockout) {
+      // This is a knockout match
+      if (!winnerId) {
+        throw new ApiError(
+          400,
+          "Scores are tied. A penalty winner must be provided for this knockout match."
+        );
+      }
+      match.winner = winnerId;
+    } else {
+      // This is a league match
+      match.winner = null;
+    }
+  }
+
+  await match.save();
+
+  // 3. Update the two related MatchHistory Documents
+  const player1Result =
+    match.winner === null
+      ? "Draw"
+      : match.winner.equals(match.team1)
+      ? "Win"
+      : "Loss";
+  const player2Result =
+    player1Result === "Win"
+      ? "Loss"
+      : player1Result === "Loss"
+      ? "Win"
+      : "Draw";
+
+  await MatchHistory.findOneAndUpdate(
+    { match: matchId, player: match.team1 },
+    {
+      $set: {
+        scoreFor: team1_score,
+        scoreAgainst: team2_score,
+        result: player1Result,
+      },
+    }
+  );
+  await MatchHistory.findOneAndUpdate(
+    { match: matchId, player: match.team2 },
+    {
+      $set: {
+        scoreFor: team2_score,
+        scoreAgainst: team1_score,
+        result: player2Result,
+      },
+    }
+  );
+
+  // 4. Dynamic Knockout Progression Logic
+  if (match.knockout) {
+    const knockoutId = match.knockout._id;
+    const knockout = await Knockout.findById(knockoutId);
+    const tournamentId = knockout.tournament;
+
+    // A) Generate Semi-Finals after all Quarter-Finals are complete
+    if (match.round === "Quarter-Final") {
+      const completedQFs = await Match.find({
+        knockout: knockoutId,
+        round: "Quarter-Final",
+        status: "Completed",
+      });
+      if (completedQFs.length === 4) {
+        // Find the winners of the specific QF matchups based on seeding
+        const winner1v8 = completedQFs.find((m) =>
+          m.team1.equals(knockout.participants[0])
+        ).winner;
+        const winner4v5 = completedQFs.find((m) =>
+          m.team1.equals(knockout.participants[3])
+        ).winner;
+        const winner2v7 = completedQFs.find((m) =>
+          m.team1.equals(knockout.participants[1])
+        ).winner;
+        const winner3v6 = completedQFs.find((m) =>
+          m.team1.equals(knockout.participants[2])
+        ).winner;
+
+        const semiFinalMatches = [
+          {
+            knockout: knockoutId,
+            tournament: tournamentId,
+            round: "Semi-Final",
+            team1: winner1v8,
+            team2: winner4v5,
+            status: "Unpublished",
+          },
+          {
+            knockout: knockoutId,
+            tournament: tournamentId,
+            round: "Semi-Final",
+            team1: winner2v7,
+            team2: winner3v6,
+            status: "Unpublished",
+          },
+        ];
+        const createdSemis = await Match.insertMany(semiFinalMatches);
+
+        const semiFinalsRound = knockout.rounds.find(
+          (r) => r.roundName === "Semi-Finals"
+        );
+        semiFinalsRound.matches.push(...createdSemis.map((m) => m._id));
+        await knockout.save();
+        // Create MatchHistory records for the new semi-final matches
+      }
+    }
+
+    // B) Generate Finals after all Semi-Finals are complete
+    if (match.round === "Semi-Final") {
+      const completedSFs = await Match.find({
+        knockout: knockoutId,
+        round: "Semi-Final",
+        status: "Completed",
+      });
+      if (completedSFs.length === 2) {
+        const winners = completedSFs.map((m) => m.winner);
+        const losers = completedSFs.map((m) =>
+          m.team1.equals(m.winner) ? m.team2 : m.team1
+        );
+
+        const finalMatches = [
+          {
+            knockout: knockoutId,
+            tournament: tournamentId,
+            round: "Grand Final",
+            team1: winners[0],
+            team2: winners[1],
+            status: "Unpublished",
+          },
+          {
+            knockout: knockoutId,
+            tournament: tournamentId,
+            round: "3rd Place Match",
+            team1: losers[0],
+            team2: losers[1],
+            status: "Unpublished",
+          },
+        ];
+        const createdFinals = await Match.insertMany(finalMatches);
+
+        const finalsRound = knockout.rounds.find(
+          (r) => r.roundName === "Finals"
+        );
+        finalsRound.matches.push(...createdFinals.map((m) => m._id));
+        await knockout.save();
+        // Create MatchHistory records for the new final matches
+      }
+    }
+
+    // C) (Optional) Complete the tournament after the final is played
+    if (match.round === "Grand Final") {
+      knockout.status = "Completed";
+      await knockout.save();
+      await Tournament.findByIdAndUpdate(tournamentId, {
+        status: "Completed",
+        champion: match.winner,
+      });
+    }
+  }
+
+  return { message: "Match score updated successfully", match };
 };
+
+async function updateMatchHistoryHelper(match) {
+  const loser = match.winner.equals(match.team1) ? match.team2 : match.team1;
+
+  try {
+    await MatchHistory.updateOne(
+      { match: match._id, player: match.winner },
+      {
+        result: "Win",
+        scoreFor: match.winner.equals(match.team1)
+          ? match.team1_score
+          : match.team2_score,
+        scoreAgainst: match.winner.equals(match.team1)
+          ? match.team2_score
+          : match.team1_score,
+        matchDate: new Date(),
+      }
+    );
+    await MatchHistory.updateOne(
+      { match: match._id, player: loser },
+      {
+        result: "Loss",
+        scoreFor: loser.equals(match.team1)
+          ? match.team1_score
+          : match.team2_score,
+        scoreAgainst: loser.equals(match.team1)
+          ? match.team2_score
+          : match.team1_score,
+        matchDate: new Date(),
+      }
+    );
+  } catch (error) {
+    console.error("Failed to update MatchHistory:", error);
+  }
+}
+
+export async function updateTournamentMatchScore(payload) {
+  const { _id: matchId, team1_score, team2_score, winnerId } = payload;
+
+  // 1. Update the individual Match
+  const match = await Match.findById(matchId).populate("series knockout");
+  if (!match) throw new ApiError(404, "Match not found.");
+
+  // if (match.status === "Completed") {
+  //   throw new ApiError(400, "Match is already completed.");
+  // }
+
+  match.team1_score = team1_score;
+  match.team2_score = team2_score;
+  match.status = "Completed";
+
+  if (team1_score > team2_score) match.winner = match.team1;
+  else if (team2_score > team1_score) match.winner = match.team2;
+  else {
+    if (match.knockout || match.series) {
+      // This is a knockout match
+      if (!winnerId) {
+        throw new ApiError(
+          400,
+          "Scores are tied. A penalty winner must be provided for this knockout match."
+        );
+      }
+      match.winner = winnerId;
+    } else {
+      // This is a league match
+      match.winner = null;
+    }
+  }
+  await match.save();
+
+  // 2. Update MatchHistory
+  await updateMatchHistoryHelper(match);
+
+  // 3. --- Progression Logic ---
+  // A) If it's a Phase 2 (Gauntlet Series) match...
+  if (match.series) {
+    await runPhase2GauntletEngine(match.series, match.winner);
+  }
+  // B) If it's a Phase 3 (Page Playoff) match...
+  else if (match.knockout && match.knockout.name.includes("Phase 3 Playoff")) {
+    await runPhase3PagePlayoffEngine(match.knockout._id);
+  }
+  // C) If it's a Phase 1 (League) match...
+  else if (match.league) {
+    console.log(`Updated Phase 1 League match ${matchId}`);
+  }
+
+  return { message: "Match score updated, tournament progressed.", match };
+}
 
 export const MatchServices = {
   submitSquadAndGenerateSubMatches,
@@ -840,5 +1006,6 @@ export const MatchServices = {
   updateSingleSubMatchScore,
   getPlayersByMatch,
   setManOfTheMatch,
-  updateMatchScoreForLeagueAndKnockout
+  updateMatchScoreForLeagueAndKnockout,
+  updateTournamentMatchScore,
 };

@@ -41,6 +41,10 @@ const leagueSchema = new Schema(
       type: Array,
       default: [],
     },
+    circuitPointsCalculated: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

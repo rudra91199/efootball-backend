@@ -13,4 +13,6 @@ router.get(
   KnockoutControllers.getKnockoutById
 );
 
+router.patch("/:knockoutId/publish-rounds", KnockoutControllers.publishRounds);
+
 export const KnockoutRoutes = router;

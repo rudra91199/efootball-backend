@@ -6,6 +6,7 @@ import { ChampionshipPoint } from "../championshipPoint/championshipPoint.model.
 import { League } from "../league/league.model.js";
 import { Team } from "../team/team.model.js";
 import { User } from "../users/user.model.js";
+import { Knockout } from "../knockout/knockout.model.js";
 
 const createTournamentIntoDB = async (payload) => {
   let phases = [];
@@ -41,6 +42,31 @@ const createTournamentIntoDB = async (payload) => {
       stageName: "The Proving Grounds",
       stageType: "League",
       stageData: provingGroundsLeague._id,
+    });
+
+    const finalTournament = await newTournament.save();
+    return { success: true, tournament: finalTournament };
+  } else if (payload.type === "Champions Circuit") {
+    const newTournament = new Tournament({
+      ...payload,
+      type: "Champions Circuit",
+    });
+
+    const seedingLeague = new League({
+      name: `${newTournament.name} - Seeding League`,
+      maxParticipants: newTournament.maxTeams,
+      participants: [],
+      tournament: newTournament._id,
+    });
+
+    await seedingLeague.save();
+    await newTournament.save();
+
+    newTournament.stages.push({
+      stageOrder: 1,
+      stageName: "The Seeding League",
+      stageType: "League",
+      stageData: seedingLeague._id,
     });
 
     const finalTournament = await newTournament.save();
@@ -178,10 +204,21 @@ const getRegisteredTournamentsFromDB = async (userId) => {
   const leagues = await League.find({ participants: objectUserId }).select(
     "tournament"
   );
+
   const leagueTournamentIds = leagues.map((l) => l.tournament);
 
+  // 3. NEW: Find tournaments from direct knockout placements (like Gauntlet Champions)
+  const knockouts = await Knockout.find({ participants: objectUserId }).select(
+    "tournament"
+  );
+  const knockoutTournamentIds = knockouts.map((k) => k.tournament);
+
   // 3. Combine and get a unique list of all tournament IDs
-  const allTournamentIds = [...teamTournamentIds, ...leagueTournamentIds];
+  const allTournamentIds = [
+    ...teamTournamentIds,
+    ...leagueTournamentIds,
+    ...knockoutTournamentIds,
+  ];
   const uniqueTournamentIds = [
     ...new Set(allTournamentIds.map((id) => id.toString())),
   ];

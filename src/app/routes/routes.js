@@ -8,6 +8,8 @@ import { LeagueRoutes } from "../modules/league/league.route.js";
 import { RulesRoutes } from "../modules/rules/rules.routes.js";
 import { KnockoutRoutes } from "../modules/knockout/knockout.route.js";
 import { SliderMatchRoutes } from "../modules/sliderMatch/sliderMatch.routes.js";
+import { CircuitPointRoutes } from "../modules/circuitPoint/circuitPoint.routes.js";
+import { SeriesRoutes } from "../modules/series/series.routes.js";
 
 const router = Router();
 
@@ -47,6 +49,14 @@ const moduleRoutes = [
   {
     path: "/slider-match",
     router: SliderMatchRoutes,
+  },
+  {
+    path: "/circuit-points",
+    router: CircuitPointRoutes,
+  },
+  {
+    path: "/series",
+    router: SeriesRoutes,
   }
 ];
 

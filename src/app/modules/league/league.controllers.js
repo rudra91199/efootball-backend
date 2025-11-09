@@ -51,8 +51,6 @@ const publishRounds = catchAsync(async (req, res) => {
   });
 });
 
-
-
 const generateLeaderboard = catchAsync(async (req, res) => {
   const { leagueId } = req.params;
 
@@ -65,7 +63,18 @@ const generateLeaderboard = catchAsync(async (req, res) => {
   });
 });
 
-
+const finalizePhase1AndGenerateGauntlet = catchAsync(async (req, res) => {
+  const { leagueId } = req.params;
+  const response = await LeagueServices.finalizePhase1AndGenerateGauntlet(
+    leagueId
+  );
+  sendResponse(res, {
+    success: true,
+    message: "Phase 1 finalized and Gauntlet generated successfully",
+    data: response,
+    statusCode: 200,
+  });
+});
 
 export const LeagueControllers = {
   registerPlayerInLeague,
@@ -73,4 +82,5 @@ export const LeagueControllers = {
   getLeagueById,
   publishRounds,
   generateLeaderboard,
+  finalizePhase1AndGenerateGauntlet,
 };

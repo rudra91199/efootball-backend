@@ -84,6 +84,7 @@ const updateRoundStatus = async (req, res) => {
   });
 };
 
+// Sub-match score update for team tournaments
 const updateScore = async (req, res) => {
   const { matchId, subMatchId } = req.params;
   const scores = req.body;
@@ -105,6 +106,17 @@ const scoreUpdateForLeagueAndKnockout = catchAsync(async (req, res) => {
   const response = await MatchServices.updateMatchScoreForLeagueAndKnockout(
     req.body
   );
+  sendResponse(res, {
+    success: true,
+    message: "Score updated successfully",
+    data: response,
+    statusCode: 200,
+  });
+});
+
+// Score update for tournament matches
+const scoreUpdateForTournament = catchAsync(async (req, res) => {
+  const response = await MatchServices.updateTournamentMatchScore(req.body);
   sendResponse(res, {
     success: true,
     message: "Score updated successfully",
@@ -144,4 +156,5 @@ export const MatchControllers = {
   getPlayersByMatch,
   setManOfTheMatch,
   scoreUpdateForLeagueAndKnockout,
+  scoreUpdateForTournament,
 };

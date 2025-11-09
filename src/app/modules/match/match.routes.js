@@ -23,6 +23,7 @@ router.patch(
   MatchControllers.updateRoundStatus
 );
 
+// Sub-match score update for team tournaments
 router.patch(
   "/submit-scores/:matchId/submatch/:subMatchId",
   auth(USER_ROLES.admin),
@@ -30,8 +31,17 @@ router.patch(
 );
 
 // Score update for league and knockout matches
-router.patch("/submit-score/leagueAndKnockout", MatchControllers.scoreUpdateForLeagueAndKnockout);
+router.patch(
+  "/submit-score/leagueAndKnockout",
+  MatchControllers.scoreUpdateForLeagueAndKnockout
+);
 
+// Score update for tournament matches
+router.patch(
+  "/submit-score/tournament",
+  auth(USER_ROLES.admin),
+  MatchControllers.scoreUpdateForTournament
+);
 
 router.get(
   "/getPlayersByMatch/:matchId",

@@ -49,6 +49,7 @@ const tournamentSchema = new Schema(
         "Knockout",
         "League + Knockout Solo",
         "League + Knockout Team",
+        "Champions Circuit",
       ],
       required: true,
     },

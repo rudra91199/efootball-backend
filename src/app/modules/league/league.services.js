@@ -1,7 +1,9 @@
 import ApiError from "../../errors/ApiError.js";
+import { calculateAndSavePhase1Points } from "../circuitPoint/circuitPoint.services.js";
 import { Knockout } from "../knockout/knockout.model.js";
 import { Match } from "../match/match.model.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
+import { Series } from "../series/series.model.js";
 import { Tournament } from "../tournaments/tournament.model.js";
 import { User } from "../users/user.model.js";
 import { League } from "./league.model.js";
@@ -39,6 +41,8 @@ const generateFixtures = async (leagueId) => {
   const league = await League.findById(leagueId);
   if (!league) throw new Error("League not found.");
   // ... (rest of your validation)
+  const tournament = await Tournament.findById(league.tournament);
+  if (!tournament) throw new Error("Tournament not found.");
 
   if (league.participants.length < league.maxParticipants) {
     throw new ApiError(400, "Not enough participants to generate fixtures.");
@@ -52,30 +56,53 @@ const generateFixtures = async (leagueId) => {
   const rounds = playerCount - 1;
   const allMatchData = []; // Will hold temporary match data
 
-  // --- 3. Generate Pairings for Both Halves ---
-  // First Half
-  for (let i = 0; i < rounds; i++) {
-    for (let j = 0; j < playerCount / 2; j++) {
-      const p1 = players[j];
-      const p2 = players[playerCount - 1 - j];
-      if (p1 && p2)
-        allMatchData.push({ round: `Round-${i + 1}`, team1: p1, team2: p2 });
+  if (tournament.type === "League + Knockout Solo") {
+    // --- 3. Generate Pairings for Both Halves ---
+    // First Half
+    for (let i = 0; i < rounds; i++) {
+      for (let j = 0; j < playerCount / 2; j++) {
+        const p1 = players[j];
+        const p2 = players[playerCount - 1 - j];
+        if (p1 && p2)
+          allMatchData.push({ round: `Round-${i + 1}`, team1: p1, team2: p2 });
+      }
+      players.splice(1, 0, players.pop());
     }
-    players.splice(1, 0, players.pop());
-  }
-  // Second Half
-  for (let i = 0; i < rounds; i++) {
-    for (let j = 0; j < playerCount / 2; j++) {
-      const p1 = players[j];
-      const p2 = players[playerCount - 1 - j];
-      if (p1 && p2)
-        allMatchData.push({
-          round: `Round-${i + 1 + rounds}`,
-          team1: p2,
-          team2: p1,
-        });
+    // Second Half
+    for (let i = 0; i < rounds; i++) {
+      for (let j = 0; j < playerCount / 2; j++) {
+        const p1 = players[j];
+        const p2 = players[playerCount - 1 - j];
+        if (p1 && p2)
+          allMatchData.push({
+            round: `Round-${i + 1 + rounds}`,
+            team1: p2,
+            team2: p1,
+          });
+      }
+      players.splice(1, 0, players.pop());
     }
-    players.splice(1, 0, players.pop());
+  } else if (tournament.type === "Champions Circuit") {
+    // --- Generate 3 Sets of Pairings ---
+    for (let set = 0; set < 3; set++) {
+      for (let i = 0; i < rounds; i++) {
+        for (let j = 0; j < playerCount / 2; j++) {
+          const p1 = players[j];
+          const p2 = players[playerCount - 1 - j];
+          if (p1 && p2) {
+            // Alternate home/away for the 3 sets
+            const team1 = set === 1 ? p2 : p1; // Swap for set 1
+            const team2 = set === 1 ? p1 : p2;
+            allMatchData.push({
+              round: `Round-${i + 1 + set * rounds}`, // Continuous round numbering
+              team1: team1,
+              team2: team2,
+            });
+          }
+        }
+        players.splice(1, 0, players.pop()); // Rotate
+      }
+    }
   }
 
   // --- 4. Create the Match Documents ---
@@ -130,7 +157,7 @@ const getLeagueById = async (leagueId) => {
       select: "-details -subMatchesGenerated",
       populate: {
         path: "team1 team2 winner",
-        select: "name image",
+        select: "name image inGameUserName",
         model: User,
       },
     });
@@ -266,10 +293,112 @@ export async function generateLeagueLeaderboard(leagueId) {
   }
 }
 
+//The Top Four Masters
+export async function finalizePhase1AndGenerateGauntlet(leagueId) {
+  // 1. Mark Phase 1 League as Completed
+  const league = await League.findByIdAndUpdate(leagueId, {
+    status: "Completed",
+  });
+  if (!league) throw new ApiError(404, "League not found.");
+  const tournamentId = league.tournament;
+
+  // 2. Get leaderboard to determine seeding AND AWARD POINTS
+  const leaderboard = await generateLeagueLeaderboard(leagueId);
+  if (leaderboard.length < 4)
+    throw new ApiError(400, "League leaderboard incomplete.");
+
+  // **NEW STEP**: Award Phase 1 points
+  await calculateAndSavePhase1Points(
+    leagueId
+    //  leaderboard
+  );
+
+  const seed1 = leaderboard[0].playerInfo._id;
+  const seed2 = leaderboard[1].playerInfo._id;
+  const seed3 = leaderboard[2].playerInfo._id;
+  const seed4 = leaderboard[3].playerInfo._id;
+  const participantIds = [seed1, seed2, seed3, seed4];
+
+  // 3. Create the Knockout document for Phase 2
+  const newKnockout = new Knockout({
+    name: "Champions Circuit - Phase 2 Gauntlet", // Specific name
+    tournament: tournamentId,
+    size: 4,
+    participants: participantIds,
+    status: "Upcoming",
+  });
+
+  // 4. Create the FIRST Series (Round 1: 4th vs 3rd)
+  const series1 = new Series({
+    knockout: newKnockout._id,
+    tournament: tournamentId,
+    roundName: "Gauntlet Round 1", // Simpler name
+    player1: seed4,
+    player2: seed3,
+    bestOf: 3, // Per your format description
+    status: "Upcoming",
+  });
+  await series1.save();
+
+  // 5. Structure rounds and save Knockout
+  newKnockout.rounds.push(
+    { roundName: "Gauntlet Round 1", series: [series1._id] },
+    { roundName: "Gauntlet Round 2", series: [] }, // To be populated later
+    { roundName: "Gauntlet Final", series: [] } // To be populated later
+  );
+  await newKnockout.save();
+
+  // 6. Generate the FIRST match (Game 1) of the first series
+  const firstMatch = await Match.create({
+    series: series1._id,
+    knockout: newKnockout._id,
+    tournament: tournamentId,
+    round: `${series1.roundName} - Game 1`,
+    team1: series1.player1, // player 1
+    team2: series1.player2, // player 2
+    status: "Unpublished",
+  });
+  series1.matches.push(firstMatch._id);
+  await series1.save();
+
+  // 7. Create initial MatchHistory for Game 1
+  await MatchHistory.insertMany([
+    {
+      player: firstMatch.team1,
+      opponent: firstMatch.team2,
+      match: firstMatch._id,
+      tournament: tournamentId,
+      result: "Pending",
+    },
+    {
+      player: firstMatch.team2,
+      opponent: firstMatch.team1,
+      match: firstMatch._id,
+      tournament: tournamentId,
+      result: "Pending",
+    },
+  ]);
+
+  // 8. Link the new Knockout stage to the main Tournament
+  const tournament = await Tournament.findById(tournamentId);
+  tournament.stages.push({
+    stageOrder: 2,
+    stageName: "Phase 2: The Gauntlet Series",
+    stageType: "Knockout",
+    stageData: newKnockout._id,
+  });
+  league.circuitPointsCalculated = true;
+  tournament.status = "Live";
+  await tournament.save();
+
+  return { success: true, knockout: newKnockout };
+}
+
 export const LeagueServices = {
   registerPlayerInLeague,
   generateFixtures,
   getLeagueById,
   publishRounds,
   generateLeagueLeaderboard,
+  finalizePhase1AndGenerateGauntlet,
 };
