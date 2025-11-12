@@ -126,6 +126,7 @@ const changePassword = async (userId, currentPassword, newPassword) => {
 };
 
 const changePasswordAdmin = async (userId, newPassword) => {
+  console.log(userId)
   const user = await User.findById(userId);
   if (!user) throw new ApiError(404, "User not found.");
   const hashedPassword = await bcrypt.hash(newPassword, 12);
@@ -196,6 +197,11 @@ export async function generateGlobalPlayerLeaderboard() {
   try {
     const globalLeaderboard = await MatchHistory.aggregate([
       // Stage 1: Group all match records by player and calculate stats
+      {
+        $match:{
+          result: { $ne: "Pending" }
+        }
+      },
       {
         $group: {
           _id: "$player",
@@ -279,6 +285,7 @@ export async function generatePlayerLeaderboard(tournamentId) {
       {
         $match: {
           tournament: new mongoose.Types.ObjectId(tournamentId),
+          result: { $ne: "Pending" }
         },
       },
 

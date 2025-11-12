@@ -33,7 +33,7 @@ router.patch(
   UserController.changePassword
 );
 router.patch(
-  "/changePassword/admin",
+  "/changePassword/admin/:userId",
   auth(USER_ROLES.admin),
   UserController.changePasswordAdmin
 );
