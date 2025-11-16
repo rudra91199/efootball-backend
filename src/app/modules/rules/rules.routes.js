@@ -7,7 +7,7 @@ const router = Router();
 
 router.get(
   "/get-all-rules",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  // auth(USER_ROLES.admin, USER_ROLES.player),
   RulesControllers.getRulesController
 );
 
