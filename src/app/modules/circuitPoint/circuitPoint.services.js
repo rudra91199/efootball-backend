@@ -26,7 +26,10 @@ export async function calculateAndSavePhase1Points(leagueId) {
     return {
       updateOne: {
         filter: { tournament: tournamentId, player: playerStat.playerInfo._id },
-        update: { $set: { phase1_points: points } },
+        update: {
+          $set: { phase1_points: points },
+          $inc: { total_points: points },
+        },
         upsert: true, // Create the CircuitPoint document if it doesn't exist
       },
     };
@@ -47,7 +50,17 @@ export async function calculateAndSavePhase2Points(knockoutId) {
     path: "rounds.series",
     model: "Series",
   });
+
   const tournamentId = knockout.tournament;
+
+  // Helper function to get the loser of a series
+  const getLoser = (series) => {
+    // Compare IDs as strings to be safe, or use .equals if they are ObjectIds
+    if (series.winner.toString() === series.player1.toString()) {
+      return series.player2;
+    }
+    return series.player1;
+  };
 
   // 1. Determine final placings from the Gauntlet
   const r1 = knockout.rounds.find((r) => r.roundName === "Gauntlet Round 1")
@@ -57,10 +70,15 @@ export async function calculateAndSavePhase2Points(knockoutId) {
   const r3 = knockout.rounds.find((r) => r.roundName === "Gauntlet Final")
     .series[0];
 
+  if (!r1 || !r2 || !r3) {
+    console.error("Missing series data in Gauntlet rounds");
+    return;
+  }
+
   const place1 = r3.winner;
-  const place2 = r3.player1.equals(place1) ? r3.player2 : r3.player1;
-  const place3 = r2.player1.equals(place2) ? r2.player2 : r2.player1;
-  const place4 = r1.player1.equals(place3) ? r1.player2 : r1.player1;
+  const place2 = getLoser(r3);
+  const place3 = getLoser(r2);
+  const place4 = getLoser(r1);
 
   const placings = [place1, place2, place3, place4];
   const pointMap = { 0: 4, 1: 3, 2: 2, 3: 1 };
