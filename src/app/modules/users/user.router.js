@@ -66,6 +66,12 @@ router.get(
 );
 
 router.get(
+  "/leaderboards/tournament/:tournamentId/player/:playerId/matches",
+  auth(USER_ROLES.admin, USER_ROLES.player),
+  UserController.getPlayerTournamentMatches
+);
+
+router.get(
   "/playerStatsBySeason/:playerId",
   auth(USER_ROLES.admin, USER_ROLES.player),
   UserController.getPlayerStatsBySeason

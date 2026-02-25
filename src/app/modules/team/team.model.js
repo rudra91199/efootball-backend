@@ -6,7 +6,7 @@ const teamSchema = new Schema(
       type: String,
       required: true,
     },
-    logo: { type: Object, required: true },
+    logo: { type: Object },
     // Link to the tournament this team belongs to
     tournament: {
       type: Schema.Types.ObjectId,
@@ -26,13 +26,22 @@ const teamSchema = new Schema(
         ref: "users",
       },
     ],
-    status:{
+    status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected"],
       default: "Pending",
-    }
+    },
+    playerRankings: [
+      {
+        player: { type: Schema.Types.ObjectId, ref: "users" },
+        rank: { type: Number }, // 1 (Best) to 8 (Weakest)
+        wins: { type: Number, default: 0 },
+      },
+    ],
+    hasDraftRights: { type: Boolean, default: false },
+    teamSubmitted: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const Team = model("Team", teamSchema);

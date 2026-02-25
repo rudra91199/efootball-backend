@@ -10,7 +10,7 @@ import { Knockout } from "./knockout.model.js";
 
 const generateGauntletKnockout = async (
   tournamentId,
-  mainLeagueChampionIds
+  mainLeagueChampionIds,
 ) => {
   try {
     // --- 1. Validation ---
@@ -30,7 +30,7 @@ const generateGauntletKnockout = async (
 
     if (leaderboard.length < 4) {
       throw new Error(
-        "Proving Grounds league is not complete or has fewer than 4 players."
+        "Proving Grounds league is not complete or has fewer than 4 players.",
       );
     }
     const provingGroundsContenders = leaderboard
@@ -105,7 +105,7 @@ const generateGauntletKnockout = async (
     newKnockout.rounds.push(
       { roundName: "Quarter-Finals", matches: matchIds },
       { roundName: "Semi-Finals", matches: [] },
-      { roundName: "Finals", matches: [] }
+      { roundName: "Finals", matches: [] },
     );
     await newKnockout.save();
 
@@ -191,7 +191,7 @@ const publishRounds = async (knockoutId, payload) => {
   if (!round || !roundStartDate || !roundEndDate) {
     throw new ApiError(
       400,
-      "round, roundStartDate, and roundEndDate are required."
+      "round, roundStartDate, and roundEndDate are required.",
     );
   }
 
@@ -201,13 +201,11 @@ const publishRounds = async (knockoutId, payload) => {
     throw new ApiError(404, "Knockout not found.");
   }
   const knockoutMatchIds = knockout.rounds.find(
-    (r) => r.roundName === round
+    (r) => r.roundName === round,
   )?.matches;
   if (!knockoutMatchIds || knockoutMatchIds.length === 0) {
     throw new ApiError(400, `No matches found for round: ${round}`);
   }
-
-  console.log(knockoutMatchIds);
 
   // 3. Use `updateMany` to update all relevant matches in one command
   const result = await Match.updateMany(
@@ -221,7 +219,7 @@ const publishRounds = async (knockoutId, payload) => {
         roundStartDate,
         roundEndDate,
       },
-    }
+    },
   );
 
   // 4. Send a success response
@@ -247,7 +245,7 @@ export async function generateChampionshipKnockout(tournamentId) {
     const tournament = await Tournament.findById(tournamentId);
     const phase1LeagueStage = tournament.stages.find((s) => s.stageOrder === 1);
     const phase1Leaderboard = await generateLeagueLeaderboard(
-      phase1LeagueStage.stageData
+      phase1LeagueStage.stageData,
     );
 
     // Sort using total points, then Phase 1 rank
@@ -255,10 +253,10 @@ export async function generateChampionshipKnockout(tournamentId) {
       if (a.total_points !== b.total_points)
         return b.total_points - a.total_points;
       const rankA = phase1Leaderboard.findIndex((p) =>
-        p.playerInfo._id.equals(a.player)
+        p.playerInfo._id.equals(a.player),
       );
       const rankB = phase1Leaderboard.findIndex((p) =>
-        p.playerInfo._id.equals(b.player)
+        p.playerInfo._id.equals(b.player),
       );
       return rankA - rankB;
     });
@@ -306,7 +304,7 @@ export async function generateChampionshipKnockout(tournamentId) {
         matches: createdMatches.map((m) => m._id),
       },
       { roundName: "Semi-Final", matches: [] }, // Match C
-      { roundName: "Grand Final", matches: [] } // Match D
+      { roundName: "Grand Final", matches: [] }, // Match D
     );
     await newKnockout.save();
 
@@ -405,7 +403,7 @@ export const runPhase3PagePlayoffEngine = async (knockoutId) => {
 
   // --- B) Generate Grand Final (Match D) ---
   const matchC = completedMatches.find(
-    (m) => m.round === "Match C (Semi-Final)"
+    (m) => m.round === "Match C (Semi-Final)",
   );
   const existingFinal = await Match.findOne({
     knockout: knockout._id,
@@ -451,7 +449,7 @@ export const runPhase3PagePlayoffEngine = async (knockoutId) => {
 
   // --- C) Complete Tournament after Grand Final (Match D) ---
   const matchD = completedMatches.find(
-    (m) => m.round === "Match D (Grand Final)"
+    (m) => m.round === "Match D (Grand Final)",
   );
   if (matchD) {
     console.log("Grand Final complete. Finalizing tournament...");

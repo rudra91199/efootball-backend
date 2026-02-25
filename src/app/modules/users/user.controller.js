@@ -126,6 +126,25 @@ const getPlayerLeaderboard = catchAsync(async (req, res) => {
   });
 });
 
+const getPlayerTournamentMatches = catchAsync(async (req, res) => {
+  // Extract both IDs from the URL params
+  const { tournamentId, playerId } = req.params;
+  
+  // Call the service we just created
+  const matches = await UserServices.getPlayerTournamentMatches(
+    tournamentId,
+    playerId
+  );
+
+  // Send the formatted response
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Player matches fetched successfully",
+    data: matches,
+  });
+});
+
 const getPlayerStatsBySeason = catchAsync(async (req, res) => {
   const { playerId } = req.params;
   const stats = await UserServices.generatePlayerSeasonStats(playerId);
@@ -232,6 +251,7 @@ export const UserController = {
   getPlayerTournaments,
   getGlobalLeaderboard,
   getPlayerLeaderboard,
+  getPlayerTournamentMatches,
   getPlayerStatsBySeason,
   getPlayerMatchHistory,
   getPlayerFullStats,

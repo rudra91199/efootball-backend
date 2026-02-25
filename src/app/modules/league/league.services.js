@@ -107,7 +107,7 @@ const generateFixtures = async (leagueId) => {
 
   // --- 4. Create the Match Documents ---
   const createdMatches = await Match.insertMany(
-    allMatchData.map((m) => ({ ...m, league: league._id }))
+    allMatchData.map((m) => ({ ...m, league: league._id })),
   );
 
   // --- 5. NEW: Create the Corresponding MatchHistory Documents ---
@@ -143,7 +143,7 @@ const generateFixtures = async (leagueId) => {
   await league.save();
 
   console.log(
-    `Generated ${createdMatches.length} fixtures and ${allHistoryLogsToCreate.length} history logs.`
+    `Generated ${createdMatches.length} fixtures and ${allHistoryLogsToCreate.length} history logs.`,
   );
   return { success: true, league };
 };
@@ -157,7 +157,8 @@ const getLeagueById = async (leagueId) => {
       select: "-details -subMatchesGenerated",
       populate: {
         path: "team1 team2 winner",
-        select: "name image inGameUserName",
+        select:
+          "name image inGameUserName isBanned banLiftDate activeYellowCards",
         model: User,
       },
     });
@@ -171,7 +172,7 @@ const publishRounds = async (leagueId, payload) => {
   if (!round || !roundStartDate || !roundEndDate) {
     throw new ApiError(
       400,
-      "round, roundStartDate, and roundEndDate are required."
+      "round, roundStartDate, and roundEndDate are required.",
     );
   }
 
@@ -194,7 +195,7 @@ const publishRounds = async (leagueId, payload) => {
         roundStartDate,
         roundEndDate,
       },
-    }
+    },
   );
 
   // 4. Send a success response
@@ -235,7 +236,7 @@ export async function generateLeagueLeaderboard(leagueId) {
 
     // 3. Process each completed match
     const completedMatches = league.matches.filter(
-      (m) => m.status === "Completed"
+      (m) => m.status === "Completed",
     );
 
     for (const match of completedMatches) {
@@ -309,7 +310,7 @@ export async function finalizePhase1AndGenerateGauntlet(leagueId) {
 
   // **NEW STEP**: Award Phase 1 points
   await calculateAndSavePhase1Points(
-    leagueId
+    leagueId,
     //  leaderboard
   );
 
@@ -344,7 +345,7 @@ export async function finalizePhase1AndGenerateGauntlet(leagueId) {
   newKnockout.rounds.push(
     { roundName: "Gauntlet Round 1", series: [series1._id] },
     { roundName: "Gauntlet Round 2", series: [] }, // To be populated later
-    { roundName: "Gauntlet Final", series: [] } // To be populated later
+    { roundName: "Gauntlet Final", series: [] }, // To be populated later
   );
   await newKnockout.save();
 

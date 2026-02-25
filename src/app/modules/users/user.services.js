@@ -23,7 +23,7 @@ const registerUserIntoDb = async (userData) => {
         {
           upload_preset: "efootball",
           transformation: { fetch_format: "auto", quality: "auto" },
-        }
+        },
       );
       userData.image = { url: secure_url, public_id };
     }
@@ -57,7 +57,7 @@ const login = async (credentials) => {
   const token = createToken(
     { userId: user._id, role: user.role },
     process.env.JWT_SECRET,
-    "7d"
+    "7d",
   );
 
   await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
@@ -88,14 +88,14 @@ const editProfile = async (userId, profileData) => {
         {
           upload_preset: "efootball",
           transformation: { fetch_format: "auto", quality: "auto" },
-        }
+        },
       );
       userImage = { url: secure_url, public_id };
     }
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { ...rest, image: userImage },
-      { new: true }
+      { new: true },
     ).select("-password");
     const { name, inGameUserName, inGameUserId, phone, phoneModel, image } =
       updatedUser;
@@ -126,7 +126,6 @@ const changePassword = async (userId, currentPassword, newPassword) => {
 };
 
 const changePasswordAdmin = async (userId, newPassword) => {
-  console.log(userId)
   const user = await User.findById(userId);
   if (!user) throw new ApiError(404, "User not found.");
   const hashedPassword = await bcrypt.hash(newPassword, 12);
@@ -142,7 +141,7 @@ const getAllUsersFromDB = async () => {
 
 const getAllUsersFroRegistration = async () => {
   const users = await User.find().select(
-    "name email role inGameUserId inGameUserName baseTeamName"
+    "name email role inGameUserId inGameUserName baseTeamName",
   );
   return users;
 };
@@ -198,9 +197,9 @@ export async function generateGlobalPlayerLeaderboard() {
     const globalLeaderboard = await MatchHistory.aggregate([
       // Stage 1: Group all match records by player and calculate stats
       {
-        $match:{
-          result: { $ne: "Pending" }
-        }
+        $match: {
+          result: { $ne: "Pending" },
+        },
       },
       {
         $group: {
@@ -285,7 +284,7 @@ export async function generatePlayerLeaderboard(tournamentId) {
       {
         $match: {
           tournament: new mongoose.Types.ObjectId(tournamentId),
-          result: { $ne: "Pending" }
+          result: { $ne: "Pending" },
         },
       },
 
@@ -344,6 +343,21 @@ export async function generatePlayerLeaderboard(tournamentId) {
     return [];
   }
 }
+
+const getPlayerTournamentMatches = async (tournamentId, playerId) => {
+  // Find all non-pending matches for this specific player in this specific tournament
+  const matches = await MatchHistory.find({
+    tournament: tournamentId,
+    player: playerId,
+    result: { $ne: "Pending" },
+  })
+    // Populate the opponent's details from the User schema
+    .populate("opponent", "name inGameUserName image")
+    // Sort by most recent matches first
+    .sort({ createdAt: -1 });
+
+  return matches;
+};
 
 export async function generatePlayerSeasonStats(playerId) {
   try {
@@ -462,7 +476,7 @@ export async function calculateStreaks(playerId) {
     } else {
       longestUnbeatenStreak = Math.max(
         longestUnbeatenStreak,
-        currentUnbeatenStreak
+        currentUnbeatenStreak,
       );
       currentUnbeatenStreak = 0;
     }
@@ -472,7 +486,7 @@ export async function calculateStreaks(playerId) {
   longestWinStreak = Math.max(longestWinStreak, currentWinStreak);
   longestUnbeatenStreak = Math.max(
     longestUnbeatenStreak,
-    currentUnbeatenStreak
+    currentUnbeatenStreak,
   );
 
   return { longestWinStreak, longestUnbeatenStreak };
@@ -720,7 +734,7 @@ const issueCardToPlayer = async (issuerId, payload) => {
     const now = new Date();
     // Check if there are any non-expired yellow cards
     const hasActiveYellow = player.activeYellowCards.some(
-      (card) => card.expiryDate > now
+      (card) => card.expiryDate > now,
     );
 
     if (hasActiveYellow) {
@@ -765,7 +779,7 @@ const liftPlayerBan = async (playerId) => {
   const updatedPlayer = await User.findByIdAndUpdate(
     playerId,
     { $set: { isBanned: false, banLiftDate: null, activeYellowCards: [] } },
-    { new: true }
+    { new: true },
   );
   return null;
 };
@@ -784,6 +798,7 @@ export const UserServices = {
   generateGlobalPlayerLeaderboard,
   generatePlayerLeaderboard,
   generatePlayerSeasonStats,
+  getPlayerTournamentMatches,
   getPlayerMatchHistory,
   calculateStreaks,
   generatePlayerCareerHighlights,

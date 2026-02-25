@@ -17,6 +17,7 @@ app.use(bodyParser.urlencoded({ extended: true, limit: "100mb" }));
 const allowedOrigins = [
   "https://efootball-center.netlify.app", // Your production frontend
   "http://localhost:5173", // Your development frontend
+  "http://192.168.68.56:5173",
 ];
 
 const corsOptions = {
@@ -31,6 +32,7 @@ const corsOptions = {
     }
     return callback(null, true);
   },
+  credentials: true,
 };
 
 app.use(cors(corsOptions));

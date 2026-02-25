@@ -50,6 +50,7 @@ const tournamentSchema = new Schema(
         "League + Knockout Solo",
         "League + Knockout Team",
         "Champions Circuit",
+        "The Classico Trilogy",
       ],
       required: true,
     },
@@ -126,8 +127,19 @@ const tournamentSchema = new Schema(
         },
       ],
     },
+    metadata: {
+      rmaTeamScore: { type: Number, default: 0 },
+      barcaTeamScore: { type: Number, default: 0 },
+      phase3Submissions: {
+        team1List: [{ type: Schema.Types.ObjectId, ref: "users" }],
+        team2List: [{ type: Schema.Types.ObjectId, ref: "users" }],
+        isLocked: { type: Boolean, default: false },
+      },
+      rmaBonusClaimed: { type: Boolean, default: false },
+      barcaBonusClaimed: { type: Boolean, default: false },
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const Tournament = model("Tournament", tournamentSchema);

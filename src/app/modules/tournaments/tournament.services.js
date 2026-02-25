@@ -17,7 +17,7 @@ const createTournamentIntoDB = async (payload) => {
           phaseName: name,
           phaseOrder: i + 1,
         });
-      }
+      },
     );
     const response = await Tournament.create({ ...payload, phases });
     return response;
@@ -69,6 +69,13 @@ const createTournamentIntoDB = async (payload) => {
       stageData: seedingLeague._id,
     });
 
+    const finalTournament = await newTournament.save();
+    return { success: true, tournament: finalTournament };
+  } else if (payload.type === "The Classico Trilogy") {
+    const newTournament = new Tournament({
+      ...payload,
+      type: "The Classico Trilogy",
+    });
     const finalTournament = await newTournament.save();
     return { success: true, tournament: finalTournament };
   }
@@ -131,7 +138,7 @@ const generateRoundRobinFixtures = async (tournamentId, teamIds) => {
     // --- 1. Input Validation ---
     if (teamIds.length !== 4) {
       throw new Error(
-        "This function requires exactly 4 teams to generate fixtures."
+        "This function requires exactly 4 teams to generate fixtures.",
       );
     }
 
@@ -202,14 +209,14 @@ const getRegisteredTournamentsFromDB = async (userId) => {
 
   // 2. Find tournaments from solo league events (like Gauntlet of Contenders)
   const leagues = await League.find({ participants: objectUserId }).select(
-    "tournament"
+    "tournament",
   );
 
   const leagueTournamentIds = leagues.map((l) => l.tournament);
 
   // 3. NEW: Find tournaments from direct knockout placements (like Gauntlet Champions)
   const knockouts = await Knockout.find({ participants: objectUserId }).select(
-    "tournament"
+    "tournament",
   );
   const knockoutTournamentIds = knockouts.map((k) => k.tournament);
 
@@ -229,10 +236,10 @@ const getRegisteredTournamentsFromDB = async (userId) => {
   }).sort({ createdAt: -1 }); // Sort by most recent
 
   const activeTournaments = registeredTournaments.filter(
-    (tournament) => tournament.status !== "Completed"
+    (tournament) => tournament.status !== "Completed",
   );
   const completedTournaments = registeredTournaments.filter(
-    (tournament) => tournament.status === "Completed"
+    (tournament) => tournament.status === "Completed",
   );
   return { activeTournaments, completedTournaments };
 };
@@ -282,7 +289,7 @@ export async function generatePhase1Leaderboard(tournamentId) {
 
     // 3. Process each completed match
     const completedMatches = phase1.matches.filter(
-      (m) => m.status === "Completed"
+      (m) => m.status === "Completed",
     );
 
     for (const match of completedMatches) {
@@ -301,7 +308,7 @@ export async function generatePhase1Leaderboard(tournamentId) {
       for (const subMatch of match.details.subMatches) {
         // Find which team player1 of the sub-match belongs to
         const isPlayer1OnTeam1 = match.team1.players.some((p) =>
-          p._id.equals(subMatch.player1)
+          p._id.equals(subMatch.player1),
         );
 
         if (isPlayer1OnTeam1) {
@@ -362,7 +369,7 @@ async function generatePhase2GauntletFixtures(tournamentId) {
     const leaderboard = await generatePhase1Leaderboard(tournamentId);
     if (leaderboard.length < 4) {
       throw new Error(
-        "Cannot generate gauntlet without at least 4 teams from Phase 1."
+        "Cannot generate gauntlet without at least 4 teams from Phase 1.",
       );
     }
 
@@ -376,7 +383,7 @@ async function generatePhase2GauntletFixtures(tournamentId) {
       await ChampionshipPoint.findOneAndUpdate(
         { tournament: tournamentId, team: teamId }, // The query to find the document
         { $set: { phase1_points: points } }, // The update to apply
-        { upsert: true, new: true } // Options: create if not found
+        { upsert: true, new: true }, // Options: create if not found
       );
     }
 
@@ -450,10 +457,10 @@ export async function generateFinalSeedingLeaderboard(tournamentId) {
       // b) Tie-breaker: by Phase 1 rank
       // Find the index (rank) of each team in the Phase 1 leaderboard
       const rankA = phase1Leaderboard.findIndex((t) =>
-        t.teamInfo._id.equals(a.teamInfo._id)
+        t.teamInfo._id.equals(a.teamInfo._id),
       );
       const rankB = phase1Leaderboard.findIndex((t) =>
-        t.teamInfo._id.equals(b.teamInfo._id)
+        t.teamInfo._id.equals(b.teamInfo._id),
       );
 
       // The team with the lower index (better rank) wins the tie
@@ -476,7 +483,7 @@ export async function generatePhase3Fixtures(tournamentId) {
     if (finalSeeding.length < 4) {
       throw new ApiError(
         404,
-        "Cannot generate final phase without at least 4 ranked teams."
+        "Cannot generate final phase without at least 4 ranked teams.",
       );
     }
 
@@ -524,7 +531,7 @@ export async function generatePhase3Fixtures(tournamentId) {
     await tournament.save();
 
     console.log(
-      `Successfully generated Phase 3 fixtures for tournament ${tournamentId}`
+      `Successfully generated Phase 3 fixtures for tournament ${tournamentId}`,
     );
     return { success: true, matches: createdMatches };
   } catch (error) {
@@ -543,7 +550,7 @@ const getPlayerStatusesForTournament = async (tournamentId) => {
 
     // 2. Find all players on those teams
     const teams = await Team.find({ _id: { $in: tournament.teams } }).select(
-      "players"
+      "players",
     );
     const playerIds = teams.flatMap((team) => team.players);
 
