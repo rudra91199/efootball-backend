@@ -9,7 +9,7 @@ const db_url_development = config.mongo_uri_development;
 
 const connection = async () => {
   try {
-    await mongoose.connect(db_url_development);
+    await mongoose.connect(db_url_production);
     server = app.listen(config.port, () => {
       console.log(`Server is running on port ${config.port}`);
     });
