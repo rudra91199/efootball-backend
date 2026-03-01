@@ -146,6 +146,26 @@ export const generatePhase1Fixtures = async (tournamentId) => {
   };
 };
 
+const finalizeTournamentIfComplete = async (tournamentId) => {
+  // 1. Count any matches in this tournament that are NOT 'Completed'
+  const pendingMatchesCount = await Match.countDocuments({
+    tournament: tournamentId,
+    status: { $ne: "Completed" },
+  });
+
+  // 2. If no matches are left, close the tournament
+  if (pendingMatchesCount === 0) {
+    await Tournament.findByIdAndUpdate(tournamentId, {
+      status: "Completed",
+    });
+
+    console.log(`Tournament ${tournamentId} has been marked as Completed.`);
+
+    // Optional: You could also trigger the final Championship Points
+    // calculation here to ensure the winner is locked in.
+  }
+};
+
 export const updateClassicoMatch = async (payload) => {
   try {
     // winnerId is optional: only required if scores are tied (Penalty Shootout)
@@ -361,6 +381,7 @@ export const updateClassicoMatch = async (payload) => {
         pointsToAdd,
         "phase3_points",
       );
+      await finalizeTournamentIfComplete(match.tournament);
     }
 
     return { success: true, match };
