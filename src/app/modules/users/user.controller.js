@@ -80,6 +80,18 @@ const getAllUsers = catchAsync(async (req, res) => {
   });
 });
 
+
+const getUserBasicInfo = catchAsync(async (req, res) => {
+  const { userId } = req.params;
+  const userInfo = await UserServices.getUserBasicInfo(userId);
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "User basic info fetched successfully",
+    data: userInfo,
+  });
+});
+
 const getUsersFroRegistration = catchAsync(async (req, res) => {
   const response = await UserServices.getAllUsersFroRegistration();
   sendResponse(res, {
@@ -167,6 +179,19 @@ const getPlayerMatchHistory = catchAsync(async (req, res) => {
   });
 });
 
+const getHeadToHeadStats = catchAsync(async (req, res) => {
+  const { player1Id, player2Id } = req.params;
+  
+  const h2hData = await UserServices.getHeadToHeadStats(player1Id, player2Id);
+  
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Head-to-Head stats fetched successfully",
+    data: h2hData,
+  });
+});
+
 const getPlayerFullStats = async (req, res) => {
   const { playerId } = req.params;
 
@@ -244,6 +269,7 @@ export const UserController = {
   checkAuth,
   editProfile,
   getAllUsers,
+  getUserBasicInfo,
   getUsersFroRegistration,
   changePassword,
   changePasswordAdmin,
@@ -254,6 +280,7 @@ export const UserController = {
   getPlayerTournamentMatches,
   getPlayerStatsBySeason,
   getPlayerMatchHistory,
+  getHeadToHeadStats,
   getPlayerFullStats,
   getPlayerScoringStats,
   issueCardToPlayer,

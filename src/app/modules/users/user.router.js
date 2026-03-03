@@ -41,6 +41,12 @@ router.patch(
 router.get("/getAllUsers", auth(USER_ROLES.admin), UserController.getAllUsers);
 
 router.get(
+  "/getUserBasicInfo/:userId",
+  auth(USER_ROLES.admin, USER_ROLES.referee, USER_ROLES.player),
+  UserController.getUserBasicInfo,
+);
+
+router.get(
   "/getUsersForRegistration",
   auth(USER_ROLES.admin, USER_ROLES.player),
   UserController.getUsersFroRegistration
@@ -80,6 +86,12 @@ router.get(
   "/getMatchHistory/:playerId",
   auth(USER_ROLES.admin, USER_ROLES.player),
   UserController.getPlayerMatchHistory
+);
+
+router.get(
+  "/h2h/:player1Id/:player2Id",
+  auth(USER_ROLES.admin, USER_ROLES.player),
+  UserController.getHeadToHeadStats
 );
 
 router.get(

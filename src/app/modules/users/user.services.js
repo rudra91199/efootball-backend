@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { createToken } from "./user.utils.js";
 import cloudinary from "../../config/cloudinary.config.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
-import mongoose from "mongoose";
+import mongoose, { get } from "mongoose";
 import { Tournament } from "../tournaments/tournament.model.js";
 import { Team } from "../team/team.model.js";
 import { Match } from "../match/match.model.js";
@@ -137,6 +137,14 @@ const changePasswordAdmin = async (userId, newPassword) => {
 const getAllUsersFromDB = async () => {
   const users = await User.find().select("-password");
   return users;
+};
+
+const getUserBasicInfo = async (userId) => {
+  const user = await User.findById(userId).select(
+    "name inGameUserId inGameUserName image phoneModel",
+  );
+  if (!user) throw new ApiError(404, "User not found.");
+  return user;
 };
 
 const getAllUsersFroRegistration = async () => {
@@ -449,6 +457,50 @@ export async function getPlayerMatchHistory(playerId) {
     return [];
   }
 }
+
+const getHeadToHeadStats = async (player1Id, player2Id) => {
+  try {
+    // 1. Fetch only completed matches between these two specific players
+    const h2hMatches = await MatchHistory.find({
+      player: player1Id,
+      opponent: player2Id,
+      result: { $ne: "Pending" },
+    })
+      .sort({ createdAt: -1 }) // Newest matches first
+      .populate("tournament", "name")
+      .populate("opponent", "name inGameUserName"); // Get the tournament name
+
+    // 2. Calculate the Tale of the Tape stats
+    let player1Wins = 0;
+    let player2Wins = 0;
+    let draws = 0;
+    let player1Goals = 0;
+    let player2Goals = 0;
+
+    h2hMatches.forEach((match) => {
+      if (match.result === "Win") player1Wins++;
+      else if (match.result === "Loss") player2Wins++;
+      else draws++;
+
+      player1Goals += match.scoreFor;
+      player2Goals += match.scoreAgainst;
+    });
+
+    return {
+      totalMatches: h2hMatches.length,
+      player1Wins,
+      player2Wins,
+      draws,
+      player1Goals,
+      player2Goals,
+      winRate: h2hMatches.length > 0 ? Math.round((player1Wins / h2hMatches.length) * 100) : 0,
+      matches: h2hMatches, // The actual list of past matches to display
+    };
+  } catch (error) {
+    console.error("Error generating H2H stats:", error);
+    throw new ApiError(500, "Failed to fetch Head-to-Head data.");
+  }
+};
 
 export async function calculateStreaks(playerId) {
   // Fetch all matches for the player, sorted oldest to newest
@@ -793,6 +845,7 @@ export const UserServices = {
   changePasswordAdmin,
   //playerData
   getAllUsersFromDB,
+  getUserBasicInfo,
   getAllUsersFroRegistration,
   findTournamentsForPlayer,
   generateGlobalPlayerLeaderboard,
@@ -800,6 +853,7 @@ export const UserServices = {
   generatePlayerSeasonStats,
   getPlayerTournamentMatches,
   getPlayerMatchHistory,
+  getHeadToHeadStats,
   calculateStreaks,
   generatePlayerCareerHighlights,
   generateScoringRecords,
