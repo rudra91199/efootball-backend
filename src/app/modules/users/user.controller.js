@@ -261,7 +261,25 @@ const liftPlayerBan = catchAsync(async (req, res) => {
   });
 });
 
+const getPlayerComparison = catchAsync(async (req, res) => {
+  const { player1Id, player2Id } = req.params;
+  const { tournamentId } = req.query; // Pass "global" or specific ID via query
+
+  const response = await UserServices.getPlayerComparison(player1Id, player2Id, tournamentId);
+  
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Player comparison fetched successfully",
+    data: response,
+  });
+});
+
+// Add to exports
+
+
 export const UserController = {
+  getPlayerComparison,
   registerUser,
   loginUser,
   checkAuth,

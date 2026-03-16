@@ -898,6 +898,119 @@ const liftPlayerBan = async (playerId) => {
   return null;
 };
 
+const getPlayerComparison = async (player1Id, player2Id, tournamentId) => {
+  try {
+    const objectP1 = new mongoose.Types.ObjectId(player1Id);
+    const objectP2 = new mongoose.Types.ObjectId(player2Id);
+
+    // Helper function to dynamically calculate overall stats (Global or Tournament)
+    const getOverallStats = async (playerId) => {
+      const matchFilter = { player: playerId, result: { $ne: "Pending" } };
+      
+      // If a specific tournament is selected, filter by it
+      if (tournamentId && tournamentId !== "global") {
+        matchFilter.tournament = new mongoose.Types.ObjectId(tournamentId);
+      }
+
+      const stats = await MatchHistory.aggregate([
+        { $match: matchFilter },
+        { $sort: { createdAt: -1 } },
+        {
+          $group: {
+            _id: null,
+            matches: { $sum: 1 },
+            wins: { $sum: { $cond: [{ $eq: ["$result", "Win"] }, 1, 0] } },
+            draws: { $sum: { $cond: [{ $eq: ["$result", "Draw"] }, 1, 0] } },
+            losses: { $sum: { $cond: [{ $eq: ["$result", "Loss"] }, 1, 0] } },
+            goalsFor: { $sum: "$scoreFor" },
+            goalsAgainst: { $sum: "$scoreAgainst" },
+            cleanSheets: { $sum: { $cond: [{ $eq: ["$scoreAgainst", 0] }, 1, 0] } },
+            allResults: { $push: "$result" }
+          }
+        },
+        {
+          $addFields: {
+            winRate: {
+              $cond: {
+                if: { $gt: ["$matches", 0] },
+                then: { $round: [{ $multiply: [{ $divide: ["$wins", "$matches"] }, 100] }, 0] },
+                else: 0
+              }
+            },
+            recentForm: { $slice: ["$allResults", 5] } // Last 5 matches form
+          }
+        },
+        { $project: { allResults: 0, _id: 0 } }
+      ]);
+
+      return stats[0] || { matches: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, cleanSheets: 0, winRate: 0, recentForm: [] };
+    };
+
+    // Helper for Direct Head-to-Head stats
+    const getDirectH2H = async () => {
+      const h2hFilter = { player: objectP1, opponent: objectP2, result: { $ne: "Pending" } };
+      if (tournamentId && tournamentId !== "global") {
+        h2hFilter.tournament = new mongoose.Types.ObjectId(tournamentId);
+      }
+
+      const h2hMatches = await MatchHistory.find(h2hFilter)
+        .sort({ createdAt: -1 })
+        .populate("tournament", "name");
+
+      let p1Wins = 0, p2Wins = 0, draws = 0, p1Goals = 0, p2Goals = 0, p1CleanSheets = 0, p2CleanSheets = 0;
+
+      h2hMatches.forEach(match => {
+        if (match.result === "Win") p1Wins++;
+        else if (match.result === "Loss") p2Wins++;
+        else draws++;
+
+        p1Goals += match.scoreFor;
+        p2Goals += match.scoreAgainst;
+        
+        if (match.scoreAgainst === 0) p1CleanSheets++;
+        if (match.scoreFor === 0) p2CleanSheets++;
+      });
+
+      return {
+        totalMatches: h2hMatches.length,
+        player1Wins: p1Wins,
+        player2Wins: p2Wins,
+        draws,
+        player1Goals: p1Goals,
+        player2Goals: p2Goals,
+        player1CleanSheets: p1CleanSheets,
+        player2CleanSheets: p2CleanSheets,
+        matches: h2hMatches.slice(0, 5) // Send only last 5 direct matches to save bandwidth
+      };
+    };
+
+    // Run all 3 queries concurrently for maximum performance
+    const [player1Stats, player2Stats, headToHead] = await Promise.all([
+      getOverallStats(objectP1),
+      getOverallStats(objectP2),
+      getDirectH2H()
+    ]);
+
+    // Fetch basic user info
+    const [p1Info, p2Info] = await Promise.all([
+      User.findById(player1Id).select("name inGameUserName image"),
+      User.findById(player2Id).select("name inGameUserName image")
+    ]);
+
+    return {
+      player1: { info: p1Info, overall: player1Stats },
+      player2: { info: p2Info, overall: player2Stats },
+      headToHead
+    };
+
+  } catch (error) {
+    console.error("Error generating comparison:", error);
+    throw new ApiError(500, "Failed to fetch comparison data.");
+  }
+};
+
+
+
 export const UserServices = {
   registerUserIntoDb,
   login,
@@ -922,4 +1035,6 @@ export const UserServices = {
   findAllCareerMilestones,
   issueCardToPlayer,
   liftPlayerBan,
+  getPlayerComparison
+
 };
