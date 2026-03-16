@@ -119,6 +119,6 @@ router.patch(
 );
 
 // ?tournamentId=global OR ?tournamentId=123456789
-router.get("/compare/:player1Id/:player2Id", auth(), UserController.getPlayerComparison);
+router.get("/compare/:player1Id/:player2Id", auth(USER_ROLES.admin, USER_ROLES.player), UserController.getPlayerComparison);
 
 export const UserRoutes = router;
