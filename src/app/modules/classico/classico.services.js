@@ -369,7 +369,7 @@ export const updateClassicoMatch = async (payload) => {
         const isLoserHighRank = loserRank >= 1 && loserRank <= 3;
 
         if (isWinnerLowRank && isLoserHighRank) {
-          pointsToAdd += 5; // The +5 Bonus
+          pointsToAdd += 3; // The +5 Bonus
           tournament.metadata[bonusKey] = true; // Mark as "Used Up"
           await tournament.save();
         }

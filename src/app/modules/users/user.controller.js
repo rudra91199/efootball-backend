@@ -202,11 +202,9 @@ const getPlayerFullStats = async (req, res) => {
     // You could add a function here to count tournamentsWon
   ]);
 
-  // Combine all stats into a single response object
   const fullStats = {
     ...coreStats,
     ...streakStats,
-    // playTime: "1,247 hours", // Play time would need to be tracked separately
   };
 
   sendResponse(res, {

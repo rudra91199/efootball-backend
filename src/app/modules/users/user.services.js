@@ -635,6 +635,10 @@ export async function generateScoringRecords(playerId) {
         $group: {
           _id: null,
           careerGoals: { $sum: "$scoreFor" },
+          // Count Braces (2 goals)
+          braces: {
+            $sum: { $cond: [{ $eq: ["$scoreFor", 2] }, 1, 0] },
+          },
           // Count standard hat-tricks (3-5 goals)
           hatTricks: {
             $sum: {
@@ -672,6 +676,7 @@ export async function generateScoringRecords(playerId) {
     return (
       records[0] || {
         careerGoals: 0,
+        braces: 0,
         hatTricks: 0,
         doubleHatTricks: 0,
         tripleHatTricks: 0,
@@ -687,71 +692,103 @@ export async function findAllCareerMilestones(playerId) {
   const objectPlayerId = new mongoose.Types.ObjectId(playerId);
 
   // --- 1. Pre-calculate Tournament Wins ---
-  // Find all teams the player has been on
   const playerTeams = await Team.find({ players: objectPlayerId });
   const playerTeamIds = playerTeams.map((t) => t._id);
 
-  // Find the first tournament won by any of those teams
-  const firstWin = await Tournament.findOne({
-    champion: { $in: playerTeamIds },
-  }).sort({ updatedAt: 1 }); // Find the earliest completed win
+  const wonTournaments = await Tournament.find({
+    $or: [{ champion: { $in: playerTeamIds } }, { champion: objectPlayerId }]
+  }).sort({ updatedAt: 1 });
 
   // --- 2. Fetch the player's entire match history, sorted chronologically ---
   const history = await MatchHistory.find({ player: objectPlayerId }).sort({
     createdAt: 1,
   });
 
-  // --- 3. Initialize variables to track progress ---
-  const milestones = {
-    tournamentChampion: firstWin ? firstWin.updatedAt : null,
-  };
+  // --- 3. Initialize tracking variables ---
+  const milestones = {};
+
+  if (wonTournaments.length > 0) milestones.tournamentChampion = wonTournaments[0].updatedAt;
+  if (wonTournaments.length >= 3) milestones.multiChampion = wonTournaments[2].updatedAt;
+
+  let matchesPlayed = 0;
+  let cumulativeWins = 0;
   let cumulativeGoals = 0;
   let cumulativeCleanSheets = 0;
+  let cumulativeMOTM = 0;
   let currentWinStreak = 0;
+  let currentUnbeatenStreak = 0;
 
-  // --- 4. Loop through the history to find the date of each milestone ---
+  // --- 4. Loop through history ---
   for (const match of history) {
-    // Check for goal-based milestones
-    if (!milestones.firstGoal && match.scoreFor > 0) {
-      milestones.firstGoal = match.createdAt;
-    }
-    if (!milestones.hatTrickHero && match.scoreFor >= 3) {
-      milestones.hatTrickHero = match.createdAt;
-    }
-    if (!milestones.doubleHatTrick && match.scoreFor >= 6) {
-      milestones.doubleHatTrick = match.createdAt;
-    }
-    if (!milestones.tripleHatTrick && match.scoreFor >= 9) {
-      milestones.tripleHatTrick = match.createdAt;
+    matchesPlayed++;
+    
+    // Match appearance milestones
+    if (!milestones.firstMatch) milestones.firstMatch = match.createdAt;
+    if (!milestones.veteran50 && matchesPlayed >= 50) milestones.veteran50 = match.createdAt;
+    if (!milestones.centurionMatches && matchesPlayed >= 100) milestones.centurionMatches = match.createdAt;
+
+    // Win & Streak logic
+    if (match.result === "Win") {
+      cumulativeWins++;
+      currentWinStreak++;
+      currentUnbeatenStreak++;
+
+      if (!milestones.firstWin) milestones.firstWin = match.createdAt;
+      if (!milestones.halfCenturyWins && cumulativeWins >= 50) milestones.halfCenturyWins = match.createdAt;
+      if (!milestones.centurionWins && cumulativeWins >= 100) milestones.centurionWins = match.createdAt;
+
+      if (!milestones.winStreak5 && currentWinStreak >= 5) milestones.winStreak5 = match.createdAt;
+      if (!milestones.winStreak10 && currentWinStreak >= 10) milestones.winStreak10 = match.createdAt;
+      if (!milestones.winStreakMaster && currentWinStreak >= 15) milestones.winStreakMaster = match.createdAt;
+
+      if (!milestones.unbeaten10 && currentUnbeatenStreak >= 10) milestones.unbeaten10 = match.createdAt;
+      if (!milestones.unbeaten20 && currentUnbeatenStreak >= 20) milestones.unbeaten20 = match.createdAt;
+
+    } else if (match.result === "Draw") {
+      currentWinStreak = 0;
+      currentUnbeatenStreak++;
+      
+      if (!milestones.unbeaten10 && currentUnbeatenStreak >= 10) milestones.unbeaten10 = match.createdAt;
+      if (!milestones.unbeaten20 && currentUnbeatenStreak >= 20) milestones.unbeaten20 = match.createdAt;
+    } else {
+      currentWinStreak = 0;
+      currentUnbeatenStreak = 0;
     }
 
-    // Check for cumulative goals (Century Club)
-    const goalsBeforeThisMatch = cumulativeGoals;
-    cumulativeGoals += match.scoreFor;
-    if (
-      !milestones.centuryClub &&
-      goalsBeforeThisMatch < 100 &&
-      cumulativeGoals >= 100
-    ) {
-      milestones.centuryClub = match.createdAt;
+    // Goal logic (Single match & Cumulative)
+    if (match.scoreFor > 0) {
+      if (!milestones.firstGoal) milestones.firstGoal = match.createdAt;
+      
+      // FIX: >= use করার ফলে যদি কেউ ৬ গোল করে, তবে তার ২,৩,৪,৫ গোলের সব মাইলস্টোনও একসাথে আনলক হয়ে যাবে!
+      if (!milestones.brace && match.scoreFor >= 2) milestones.brace = match.createdAt;
+      if (!milestones.hatTrickHero && match.scoreFor >= 3) milestones.hatTrickHero = match.createdAt;
+      if (!milestones.poker && match.scoreFor >= 4) milestones.poker = match.createdAt;
+      if (!milestones.glut && match.scoreFor >= 5) milestones.glut = match.createdAt;
+      if (!milestones.doubleHatTrick && match.scoreFor >= 6) milestones.doubleHatTrick = match.createdAt;
+      if (!milestones.tripleHatTrick && match.scoreFor >= 9) milestones.tripleHatTrick = match.createdAt;
+
+      cumulativeGoals += match.scoreFor;
+      
+      // FIX: Cumulative Goals Logic
+      if (!milestones.halfCenturyGoals && cumulativeGoals >= 50) milestones.halfCenturyGoals = match.createdAt;
+      if (!milestones.centuryClub && cumulativeGoals >= 100) milestones.centuryClub = match.createdAt;
+      if (!milestones.doubleCenturyGoals && cumulativeGoals >= 200) milestones.doubleCenturyGoals = match.createdAt;
     }
 
-    // Check for cumulative clean sheets
+    // Clean sheet logic
     if (match.scoreAgainst === 0) {
       cumulativeCleanSheets++;
-      if (!milestones.cleanSheetKing && cumulativeCleanSheets >= 50) {
-        milestones.cleanSheetKing = match.createdAt;
-      }
+      if (!milestones.firstCleanSheet) milestones.firstCleanSheet = match.createdAt;
+      if (!milestones.cleanSheet10 && cumulativeCleanSheets >= 10) milestones.cleanSheet10 = match.createdAt;
+      if (!milestones.cleanSheetKing && cumulativeCleanSheets >= 50) milestones.cleanSheetKing = match.createdAt;
     }
 
-    // Check for win streak
-    if (match.result === "Win") {
-      currentWinStreak++;
-      if (!milestones.winStreakMaster && currentWinStreak >= 15) {
-        milestones.winStreakMaster = match.createdAt;
-      }
-    } else {
-      currentWinStreak = 0; // Reset streak on a loss or draw
+    // MOTM logic
+    if (match.isManOfTheMatch) {
+      cumulativeMOTM++;
+      if (!milestones.firstMOTM) milestones.firstMOTM = match.createdAt;
+      if (!milestones.motm10 && cumulativeMOTM >= 10) milestones.motm10 = match.createdAt;
+      if (!milestones.motm50 && cumulativeMOTM >= 50) milestones.motm50 = match.createdAt;
     }
   }
 
