@@ -209,6 +209,10 @@ export async function generateGlobalPlayerLeaderboard() {
           result: { $ne: "Pending" },
         },
       },
+      // --- NEW: Sort matches by creation date (newest first) ---
+      {
+        $sort: { createdAt: -1 }
+      },
       {
         $group: {
           _id: "$player",
@@ -218,6 +222,8 @@ export async function generateGlobalPlayerLeaderboard() {
           draws: { $sum: { $cond: [{ $eq: ["$result", "Draw"] }, 1, 0] } },
           goalsScored: { $sum: "$scoreFor" },
           goalsConceded: { $sum: "$scoreAgainst" },
+          // --- NEW: Push all results into an array (already sorted newest to oldest) ---
+          allResults: { $push: "$result" }
         },
       },
 
@@ -225,7 +231,6 @@ export async function generateGlobalPlayerLeaderboard() {
       {
         $addFields: {
           goalDifference: { $subtract: ["$goalsScored", "$goalsConceded"] },
-          // --- NEW: Calculate points based on wins and draws ---
           points: {
             $add: [{ $multiply: ["$wins", 3] }, "$draws"],
           },
@@ -238,6 +243,8 @@ export async function generateGlobalPlayerLeaderboard() {
               else: 0,
             },
           },
+          // --- NEW: Take the top 5 results for recent form ---
+          recentForm: { $slice: ["$allResults", 5] }
         },
       },
 
@@ -263,7 +270,7 @@ export async function generateGlobalPlayerLeaderboard() {
         $unwind: "$playerInfo",
       },
 
-      // --- Stage 6: REVISED - Sort by points first ---
+      // Stage 6: Sort by points first
       {
         $sort: {
           points: -1, // 1. Sort by points descending
@@ -272,7 +279,12 @@ export async function generateGlobalPlayerLeaderboard() {
         },
       },
 
-      // Stage 7: Limit the leaderboard
+      // Stage 7: Clean up unnecessary fields and Limit
+      {
+        $project: {
+          allResults: 0 // Remove the large array from final output to save bandwidth
+        }
+      },
       {
         $limit: 100,
       },
@@ -295,7 +307,10 @@ export async function generatePlayerLeaderboard(tournamentId) {
           result: { $ne: "Pending" },
         },
       },
-
+      // --- NEW: Sort matches by creation date (newest first) ---
+      {
+        $sort: { createdAt: -1 }
+      },
       // Stage 2: Group records by player and calculate stats
       {
         $group: {
@@ -306,6 +321,8 @@ export async function generatePlayerLeaderboard(tournamentId) {
           draws: { $sum: { $cond: [{ $eq: ["$result", "Draw"] }, 1, 0] } },
           goalsScored: { $sum: "$scoreFor" },
           goalsConceded: { $sum: "$scoreAgainst" },
+          // --- NEW: Push all results into an array ---
+          allResults: { $push: "$result" }
         },
       },
 
@@ -313,10 +330,11 @@ export async function generatePlayerLeaderboard(tournamentId) {
       {
         $addFields: {
           goalDifference: { $subtract: ["$goalsScored", "$goalsConceded"] },
-          // --- THE FIX: Calculate points ---
           points: {
             $add: [{ $multiply: ["$wins", 3] }, "$draws"],
           },
+          // --- NEW: Take the top 5 results for recent form ---
+          recentForm: { $slice: ["$allResults", 5] }
         },
       },
 
@@ -335,7 +353,7 @@ export async function generatePlayerLeaderboard(tournamentId) {
         $unwind: "$playerInfo",
       },
 
-      // Stage 6: REVISED - Sort by points first
+      // Stage 6: Sort by points first
       {
         $sort: {
           points: -1, // 1. Sort by points descending
@@ -343,6 +361,13 @@ export async function generatePlayerLeaderboard(tournamentId) {
           goalsScored: -1, // 3. Then by goals scored descending
         },
       },
+
+      // Stage 7: Clean up unnecessary fields
+      {
+        $project: {
+          allResults: 0 // Keep API response clean
+        }
+      }
     ]);
 
     return leaderboard;
