@@ -7,6 +7,8 @@ import { League } from "../league/league.model.js";
 import { Team } from "../team/team.model.js";
 import { User } from "../users/user.model.js";
 import { Knockout } from "../knockout/knockout.model.js";
+import { MatchHistory } from "../matchHistory/matchHistory.model.js";
+import { classicoServices } from "../classico/classico.services.js";
 
 const createTournamentIntoDB = async (payload) => {
   let phases = [];
@@ -572,6 +574,331 @@ const getPlayerStatusesForTournament = async (tournamentId) => {
   }
 };
 
+// ==========================================
+// *1. RETROACTIVE HALL OF FAME FIXER (ADMIN)
+// ==========================================
+const retroactivelyFixHallOfFame = async () => {
+  try {
+    // Find all completed tournaments
+    const pastTournaments = await Tournament.find({ status: "Completed" });
+    let fixedCount = 0;
+
+    for (const tournament of pastTournaments) {
+      // 1. Accurately identify the tournament category
+      const isTeamTournament = ["Trifecta", "The Classico Trilogy"].includes(
+        tournament.type,
+      );
+
+      // Update participantType so Mongoose knows what collection to populate from
+      tournament.participantType = isTeamTournament ? "Team" : "users";
+
+      // 2. Find Runner Up from Grand Final
+      const grandFinalMatch = await Match.findOne({
+        tournament: tournament._id,
+        round: "Grand Final",
+        status: "Completed",
+      });
+
+      if (grandFinalMatch && grandFinalMatch.winner) {
+        if (
+          grandFinalMatch.winner.toString() === grandFinalMatch.team1.toString()
+        ) {
+          tournament.runnerUp = grandFinalMatch.team2;
+        } else {
+          tournament.runnerUp = grandFinalMatch.team1;
+        }
+      }
+
+      // 3. Calculate Top Scorer
+      const topScorerData = await MatchHistory.aggregate([
+        { $match: { tournament: tournament._id, result: { $ne: "Pending" } } },
+        { $group: { _id: "$player", totalGoals: { $sum: "$scoreFor" } } },
+        { $sort: { totalGoals: -1 } },
+        { $limit: 1 },
+      ]);
+
+      // 4. Calculate Top Defender (Most Clean Sheets)
+      const topDefenderData = await MatchHistory.aggregate([
+        {
+          $match: {
+            tournament: tournament._id,
+            result: { $ne: "Pending" },
+            scoreAgainst: 0,
+          },
+        },
+        { $group: { _id: "$player", cleanSheets: { $sum: 1 } } },
+        { $sort: { cleanSheets: -1 } },
+        { $limit: 1 },
+      ]);
+
+      // 5. Calculate MVP (Only for Team Tournaments)
+      let mvpId = null;
+      if (isTeamTournament) {
+        const mvpData = await MatchHistory.aggregate([
+          { $match: { tournament: tournament._id, isManOfTheMatch: true } },
+          { $group: { _id: "$player", motmCount: { $sum: 1 } } },
+          { $sort: { motmCount: -1 } },
+          { $limit: 1 },
+        ]);
+        mvpId = mvpData[0]?._id || null;
+      }
+
+      // 6. Save the calculated data
+      tournament.hallOfFame = {
+        topScorer: topScorerData[0]?._id || null,
+        topDefender: topDefenderData[0]?._id || null,
+        mvp: mvpId,
+      };
+
+      await tournament.save();
+      fixedCount++;
+    }
+
+    return {
+      message: `Successfully generated Hall of Fame data for ${fixedCount} tournaments!`,
+    };
+  } catch (error) {
+    console.error("Error backfilling Hall of Fame:", error);
+    throw new ApiError(500, "Failed to backfill Hall of Fame.");
+  }
+};
+
+// ==========================================
+// *Central Finalization Function (Called by Engine after Grand Final)
+// ==========================================
+export const finalizeTournament = async (tournamentId, finalMatchId) => {
+  try {
+    const tournament =
+      await Tournament.findById(tournamentId).populate("teams");
+    // Safety check: if already completed, don't run math again
+    if (!tournament || tournament.status === "Completed") return;
+    // 1. IDENTIFY CHAMPION & RUNNER-UP
+    if (tournament.type === "The Classico Trilogy") {
+      // Classico still uses the point-based leaderboard logic
+      const leaderboard =
+        await classicoServices.getChampionshipLeaderboard(tournamentId);
+      const winnerName = leaderboard[0]._id;
+      const winningTeamDoc = await Team.findOne({
+        tournament: tournamentId,
+        name: winnerName,
+      });
+      tournament.champion = winningTeamDoc?._id;
+      tournament.runnerUp = tournament.teams.find(
+        (t) => !t._id.equals(winningTeamDoc?._id),
+      )?._id;
+    } else {
+      // For all other types: Use the Match ID passed directly from the engine
+      const finalMatch = await Match.findById(finalMatchId);
+
+      if (finalMatch && finalMatch.winner) {
+        tournament.champion = finalMatch.winner;
+        // Runner-up is the one who lost this specific match
+        tournament.runnerUp = finalMatch.winner.equals(finalMatch.team1)
+          ? finalMatch.team2
+          : finalMatch.team1;
+      }
+    }
+
+    // 2. TRIGGER HALL OF FAME CALCULATIONS
+    try {
+      if (tournament.type === "The Classico Trilogy") {
+        await calculateClassicoHoF(tournament);
+      } else {
+        await calculateStandardHoF(tournament);
+      }
+    } catch (hofError) {
+      console.error("Hall of Fame Calculation Error:", hofError);
+    }
+
+    // 3. FINAL SAVE
+    tournament.status = "Completed";
+    await tournament.save();
+    console.log(
+      `Tournament ${tournamentId} finalized using match ${finalMatchId}`,
+    );
+  } catch (err) {
+    console.error("Finalization error:", err);
+  }
+};
+
+// --- HELPER: CLASSICO AWARDS (Wins > GD > GF) ---
+async function calculateClassicoHoF(tournament) {
+  const leaderboard = await classicoServices.getChampionshipLeaderboard(
+    tournament._id,
+  );
+  let allPlayers = [];
+  leaderboard.forEach((t) => t.players.forEach((p) => allPlayers.push(p)));
+
+  const getID = async (u) => {
+    const user = await mongoose
+      .model("users")
+      .findOne({ inGameUserName: u?.username });
+    return user?._id || null;
+  };
+
+  // MVP & Grind Master: Tie-breaker (Points > GD > Goals For)
+  const mvp = allPlayers.sort(
+    (a, b) => b.total - a.total || b.gd - a.gd || b.gf - a.gf,
+  )[0];
+  const gm = allPlayers.sort(
+    (a, b) => b.p1 - a.p1 || b.gd - a.gd || b.gf - a.gf,
+  )[0];
+
+  // NEMESIS: Phase 2 Series Dominance
+  const nemesis = await MatchHistory.aggregate([
+    { $match: { tournament: tournament._id, result: "Win" } },
+    {
+      $lookup: {
+        from: "matches",
+        localField: "match",
+        foreignField: "_id",
+        as: "m",
+      },
+    },
+    { $unwind: "$m" },
+    { $match: { "m.series": { $exists: true, $ne: null } } },
+    {
+      $group: {
+        _id: "$player",
+        wins: { $sum: 1 },
+        gf: { $sum: "$scoreFor" },
+        ga: { $sum: "$scoreAgainst" },
+      },
+    },
+    { $addFields: { gd: { $subtract: ["$gf", "$ga"] } } },
+    { $sort: { wins: -1, gd: -1, gf: -1 } },
+    { $limit: 1 },
+  ]);
+
+  tournament.hallOfFame = {
+    mvp: await getID(mvp),
+    grindMaster: await getID(gm),
+    nemesis: nemesis[0]?._id || null,
+    giantKillers: tournament.metadata?.giantKillers || [], // Saved in updateClassicoMatch
+  };
+}
+
+// --- HELPER: STANDARD (SOLO / TRIFECTA) ---
+async function calculateStandardHoF(tournament) {
+  // Scorer: Total Goals > MP Efficiency
+  const scorer = await MatchHistory.aggregate([
+    { $match: { tournament: tournament._id, result: "Win" } },
+    {
+      $group: { _id: "$player", goals: { $sum: "$scoreFor" }, mp: { $sum: 1 } },
+    },
+    { $sort: { goals: -1, mp: 1 } },
+    { $limit: 1 },
+  ]);
+
+  // Defender: Clean Sheets > Low Conceded
+  const defender = await MatchHistory.aggregate([
+    {
+      $match: {
+        tournament: tournament._id,
+        scoreAgainst: 0,
+        result: { $ne: "Pending" },
+      },
+    },
+    {
+      $group: {
+        _id: "$player",
+        cs: { $sum: 1 },
+        ga: { $sum: "$scoreAgainst" },
+      },
+    },
+    { $sort: { cs: -1, ga: 1 } },
+    { $limit: 1 },
+  ]);
+
+  let mvpId = null;
+  if (tournament.type === "Trifecta") {
+    const motm = await MatchHistory.aggregate([
+      { $match: { tournament: tournament._id, isManOfTheMatch: true } },
+      {
+        $group: {
+          _id: "$player",
+          count: { $sum: 1 },
+          goals: { $sum: "$scoreFor" },
+        },
+      },
+      { $sort: { count: -1, goals: -1 } },
+      { $limit: 1 },
+    ]);
+    mvpId = motm[0]?._id;
+  } else {
+    // Solo MVP: Wins > GD > GF
+    const soloMvp = await MatchHistory.aggregate([
+      { $match: { tournament: tournament._id, result: "Win" } },
+      {
+        $group: {
+          _id: "$player",
+          wins: { $sum: 1 },
+          gf: { $sum: "$scoreFor" },
+          ga: { $sum: "$scoreAgainst" },
+        },
+      },
+      { $addFields: { gd: { $subtract: ["$gf", "$ga"] } } },
+      { $sort: { wins: -1, gd: -1, gf: -1 } },
+      { $limit: 1 },
+    ]);
+    mvpId = soloMvp[0]?._id;
+  }
+
+  tournament.hallOfFame = {
+    mvp: mvpId,
+    topScorer: scorer[0]?._id,
+    topDefender: defender[0]?._id,
+  };
+}
+
+// ==========================================
+// 2. PUBLIC HALL OF FAME FETCHER (FRONTEND)
+// ==========================================
+const getHallOfFameTournaments = async () => {
+  const tournaments = await Tournament.find({ status: "Completed" })
+    .sort({ updatedAt: -1 }) // Newest completed tournaments first
+    .select(
+      "name type participantType champion runnerUp thirdPlace hallOfFame createdAt",
+    )
+
+    // 1. Deep Populate Champion
+    .populate({
+      path: "champion",
+      select: "name inGameUserName image logo players", // 'players' is grabbed if it's a Team
+      populate: {
+        path: "players", // Look inside the players array
+        select: "name inGameUserName image", // Get the individual player's details
+      },
+    })
+
+    // 2. Deep Populate Runner-Up
+    .populate({
+      path: "runnerUp",
+      select: "name inGameUserName image logo players",
+      populate: {
+        path: "players",
+        select: "name inGameUserName image",
+      },
+    })
+
+    // 3. Deep Populate Third Place
+    .populate({
+      path: "thirdPlace",
+      select: "name inGameUserName image logo players",
+      populate: {
+        path: "players",
+        select: "name inGameUserName image",
+      },
+    })
+
+    // 4. Individual awards are always strictly Users
+    .populate("hallOfFame.mvp", "name inGameUserName image")
+    .populate("hallOfFame.topScorer", "name inGameUserName image")
+    .populate("hallOfFame.topDefender", "name inGameUserName image");
+
+  return tournaments;
+};
+
 export const TournamentServices = {
   createTournamentIntoDB,
   getAllTournamentsFromDB,
@@ -585,4 +912,7 @@ export const TournamentServices = {
   generateFinalSeedingLeaderboard,
   generatePhase3Fixtures,
   getPlayerStatusesForTournament,
+  finalizeTournament,
+  getHallOfFameTournaments,
+  retroactivelyFixHallOfFame,
 };

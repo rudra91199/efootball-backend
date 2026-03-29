@@ -5,14 +5,17 @@ import { runPhase3PagePlayoffEngine } from "../knockout/knockout.services.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { runPhase2GauntletEngine } from "../series/series.service.js";
 import { Tournament } from "../tournaments/tournament.model.js";
-import { generatePhase1Leaderboard } from "../tournaments/tournament.services.js";
+import {
+  finalizeTournament,
+  generatePhase1Leaderboard,
+} from "../tournaments/tournament.services.js";
 import { User } from "../users/user.model.js";
 import { Match } from "./match.model.js";
 
 const submitSquadAndGenerateSubMatches = async (
   matchId,
   submittingCaptainId,
-  players
+  players,
 ) => {
   try {
     // --- Step 1: Get Data from the Request ---
@@ -75,12 +78,12 @@ const submitSquadAndGenerateSubMatches = async (
       late_night_player,
     ];
     const teamPlayerIds = submittingTeamObject.players.map((p) =>
-      p._id.toString()
+      p._id.toString(),
     );
 
     // Check if all submitted players are actually on the team
     const allPlayersAreValid = submittedPlayerIds.every((id) =>
-      teamPlayerIds.includes(id)
+      teamPlayerIds.includes(id),
     );
     if (!allPlayersAreValid) {
       return res.status(400).json({
@@ -170,15 +173,13 @@ const submitSquadAndGenerateSubMatches = async (
         };
 
         // Use MongoDB's $push operator to add the new log to each player's history array
-        const createMatchHistoryForPlayer1 = await MatchHistory.create(
-          player1Log
-        );
+        const createMatchHistoryForPlayer1 =
+          await MatchHistory.create(player1Log);
         await User.findByIdAndUpdate(player1, {
           $push: { matchHistory: createMatchHistoryForPlayer1._id },
         });
-        const createMatchHistoryForPlayer2 = await MatchHistory.create(
-          player2Log
-        );
+        const createMatchHistoryForPlayer2 =
+          await MatchHistory.create(player2Log);
         await User.findByIdAndUpdate(player2, {
           $push: { matchHistory: createMatchHistoryForPlayer2._id },
         });
@@ -231,7 +232,7 @@ const generateOrUpdateSubMatches = async (matchId) => {
       // B) Use $pull to remove the old references from all affected players
       await User.updateMany(
         { _id: { $in: [...oldPlayerIds] } },
-        { $pull: { matchHistory: { $in: oldHistoryIds } } }
+        { $pull: { matchHistory: { $in: oldHistoryIds } } },
       );
     }
   }
@@ -240,7 +241,7 @@ const generateOrUpdateSubMatches = async (matchId) => {
   // Check if both teams have submitted their squads
   if (match.team1_squad?.star_player && match.team2_squad?.star_player) {
     console.log(
-      `Both squads are in for match ${matchId}. Generating new sub-matches.`
+      `Both squads are in for match ${matchId}. Generating new sub-matches.`,
     );
 
     // A) Create the new sub-match objects
@@ -320,14 +321,14 @@ async function updateHistoryAfterSubMatch(subMatch, matchInfo) {
     player1Score > player2Score
       ? "Win"
       : player1Score < player2Score
-      ? "Loss"
-      : "Draw";
+        ? "Loss"
+        : "Draw";
   const player2Result =
     player2Score > player1Score
       ? "Win"
       : player2Score < player1Score
-      ? "Loss"
-      : "Draw";
+        ? "Loss"
+        : "Draw";
 
   // 2. Update the MatchHistory document for Player 1
   await MatchHistory.findOneAndUpdate(
@@ -338,7 +339,7 @@ async function updateHistoryAfterSubMatch(subMatch, matchInfo) {
         scoreAgainst: player2Score,
         result: player1Result,
       },
-    }
+    },
   );
 
   // 3. Update the MatchHistory document for Player 2
@@ -350,7 +351,7 @@ async function updateHistoryAfterSubMatch(subMatch, matchInfo) {
         scoreAgainst: player1Score,
         result: player2Result,
       },
-    }
+    },
   );
 
   console.log(`Updated real-time match history for sub-match ${subMatch._id}`);
@@ -388,7 +389,7 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
       subMatch.winner = subMatch.player2.toString();
     else {
       const phase = match.tournament.phases.find((p) =>
-        p._id.equals(match.phase)
+        p._id.equals(match.phase),
       );
       const isKnockoutStage = phase?.phaseOrder > 1;
 
@@ -396,12 +397,12 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
         if (!winnerId)
           throw new ApiError(
             400,
-            "A penalty winner must be provided for a draw in a knockout match."
+            "A penalty winner must be provided for a draw in a knockout match.",
           );
         subMatch.winner = winnerId;
       } else {
         const phase = match.tournament.phases.find((p) =>
-          p._id.equals(match.phase)
+          p._id.equals(match.phase),
         );
         const isKnockoutStage = phase?.phaseOrder > 1;
 
@@ -409,7 +410,7 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
           if (!winnerId)
             throw new ApiError(
               400,
-              "A penalty winner must be provided for a draw in a knockout match."
+              "A penalty winner must be provided for a draw in a knockout match.",
             );
           subMatch.winner = winnerId;
         } else {
@@ -430,7 +431,7 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
           // A player won
           const winnerPlayerId = sm.winner;
           const isWinnerInTeam1 = match.team1.players.some((p) =>
-            p._id.equals(winnerPlayerId)
+            p._id.equals(winnerPlayerId),
           );
           if (isWinnerInTeam1) {
             team1Points += 3;
@@ -451,12 +452,12 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
 
     // 5. Auto-Finalization Check
     const allSubMatchesCompleted = match.details.subMatches.every(
-      (sm) => sm.status === "Completed"
+      (sm) => sm.status === "Completed",
     );
 
     if (allSubMatchesCompleted) {
       console.log(
-        `All sub-matches for Match ${matchId} are complete. Finalizing...`
+        `All sub-matches for Match ${matchId} are complete. Finalizing...`,
       );
 
       if (match.team1_score > match.team2_score) match.winner = match.team1;
@@ -511,7 +512,7 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
           phase.matches.push(nextMatch._id);
           await tournament.save();
           console.log(
-            `Dynamically generated next gauntlet match: ${nextMatch.round}`
+            `Dynamically generated next gauntlet match: ${nextMatch.round}`,
           );
         }
       }
@@ -523,7 +524,7 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
         match.round === "Gauntlet M3 (Final)"
       ) {
         console.log(
-          "Final Gauntlet match completed. Calculating Phase 2 Championship Points..."
+          "Final Gauntlet match completed. Calculating Phase 2 Championship Points...",
         );
 
         // 1. Identify all 4 teams and their placement
@@ -606,13 +607,13 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
         // If BOTH semi-finals are now complete, generate the final matches
         if (completedSemis.length === 2) {
           console.log(
-            "Both semi-finals are complete. Generating final matches..."
+            "Both semi-finals are complete. Generating final matches...",
           );
 
           // Identify the two winners and two losers
           const winners = completedSemis.map((m) => m.winner);
           const losers = completedSemis.map((m) =>
-            m.team1.equals(m.winner) ? m.team2 : m.team1
+            m.team1.equals(m.winner) ? m.team2 : m.team1,
           );
 
           // Create the new match documents
@@ -648,18 +649,13 @@ const updateSingleSubMatchScore = async (matchId, subMatchId, scores) => {
 
       if (phase?.phaseOrder === 3 && match.round === "Grand Final") {
         console.log(
-          "Grand Final is complete. Finalizing the entire tournament..."
+          "Grand Final is complete. Finalizing the entire tournament...",
         );
 
         // 1. Update the phase status
         phase.status = "Completed";
 
-        // 2. Update the main tournament document
-        tournament.status = "Completed";
-        tournament.champion = match.winner; // Set the overall tournament champion
-
-        // 3. Save the changes
-        await tournament.save();
+        await finalizeTournament(tournament._id, match._id);
       }
 
       return {
@@ -708,7 +704,7 @@ export const setManOfTheMatch = async (matchId, playerId) => {
     {
       manOfTheMatch: playerId,
     },
-    { new: true }
+    { new: true },
   );
 
   const updateHistory = await MatchHistory.findOneAndUpdate(
@@ -718,7 +714,7 @@ export const setManOfTheMatch = async (matchId, playerId) => {
     },
     {
       new: true,
-    }
+    },
   );
   return { updateHistory, updateMatch };
 };
@@ -750,7 +746,7 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
       if (!winnerId) {
         throw new ApiError(
           400,
-          "Scores are tied. A penalty winner must be provided for this knockout match."
+          "Scores are tied. A penalty winner must be provided for this knockout match.",
         );
       }
       match.winner = winnerId;
@@ -767,14 +763,14 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
     match.winner === null
       ? "Draw"
       : match.winner.equals(match.team1)
-      ? "Win"
-      : "Loss";
+        ? "Win"
+        : "Loss";
   const player2Result =
     player1Result === "Win"
       ? "Loss"
       : player1Result === "Loss"
-      ? "Win"
-      : "Draw";
+        ? "Win"
+        : "Draw";
 
   await MatchHistory.findOneAndUpdate(
     { match: matchId, player: match.team1 },
@@ -784,7 +780,7 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
         scoreAgainst: team2_score,
         result: player1Result,
       },
-    }
+    },
   );
   await MatchHistory.findOneAndUpdate(
     { match: matchId, player: match.team2 },
@@ -794,7 +790,7 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
         scoreAgainst: team1_score,
         result: player2Result,
       },
-    }
+    },
   );
 
   // 4. Dynamic Knockout Progression Logic
@@ -813,16 +809,16 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
       if (completedQFs.length === 4) {
         // Find the winners of the specific QF matchups based on seeding
         const winner1v8 = completedQFs.find((m) =>
-          m.team1.equals(knockout.participants[0])
+          m.team1.equals(knockout.participants[0]),
         ).winner;
         const winner4v5 = completedQFs.find((m) =>
-          m.team1.equals(knockout.participants[3])
+          m.team1.equals(knockout.participants[3]),
         ).winner;
         const winner2v7 = completedQFs.find((m) =>
-          m.team1.equals(knockout.participants[1])
+          m.team1.equals(knockout.participants[1]),
         ).winner;
         const winner3v6 = completedQFs.find((m) =>
-          m.team1.equals(knockout.participants[2])
+          m.team1.equals(knockout.participants[2]),
         ).winner;
 
         const semiFinalMatches = [
@@ -846,7 +842,7 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
         const createdSemis = await Match.insertMany(semiFinalMatches);
 
         const semiFinalsRound = knockout.rounds.find(
-          (r) => r.roundName === "Semi-Finals"
+          (r) => r.roundName === "Semi-Finals",
         );
         semiFinalsRound.matches.push(...createdSemis.map((m) => m._id));
         await knockout.save();
@@ -864,7 +860,7 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
       if (completedSFs.length === 2) {
         const winners = completedSFs.map((m) => m.winner);
         const losers = completedSFs.map((m) =>
-          m.team1.equals(m.winner) ? m.team2 : m.team1
+          m.team1.equals(m.winner) ? m.team2 : m.team1,
         );
 
         const finalMatches = [
@@ -888,7 +884,7 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
         const createdFinals = await Match.insertMany(finalMatches);
 
         const finalsRound = knockout.rounds.find(
-          (r) => r.roundName === "Finals"
+          (r) => r.roundName === "Finals",
         );
         finalsRound.matches.push(...createdFinals.map((m) => m._id));
         await knockout.save();
@@ -900,10 +896,7 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
     if (match.round === "Grand Final") {
       knockout.status = "Completed";
       await knockout.save();
-      await Tournament.findByIdAndUpdate(tournamentId, {
-        status: "Completed",
-        champion: match.winner,
-      });
+      await finalizeTournament(tournamentId, match._id);
     }
   }
 
@@ -925,7 +918,7 @@ async function updateMatchHistoryHelper(match) {
           ? match.team2_score
           : match.team1_score,
         matchDate: new Date(),
-      }
+      },
     );
     await MatchHistory.updateOne(
       { match: match._id, player: loser },
@@ -938,7 +931,7 @@ async function updateMatchHistoryHelper(match) {
           ? match.team2_score
           : match.team1_score,
         matchDate: new Date(),
-      }
+      },
     );
   } catch (error) {
     console.error("Failed to update MatchHistory:", error);
@@ -968,7 +961,7 @@ export async function updateTournamentMatchScore(payload) {
       if (!winnerId) {
         throw new ApiError(
           400,
-          "Scores are tied. A penalty winner must be provided for this knockout match."
+          "Scores are tied. A penalty winner must be provided for this knockout match.",
         );
       }
       match.winner = winnerId;

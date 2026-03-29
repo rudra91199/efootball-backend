@@ -1,15 +1,13 @@
 import { model, Schema } from "mongoose";
 
-// We define the Phase schema here to be embedded inside the Tournament
 const phaseSchema = new Schema({
-  phaseName: { type: String, required: true }, // "Phase 1: Seeding Scramble", etc.
-  phaseOrder: { type: Number, required: true }, // 1, 2, or 3
+  phaseName: { type: String, required: true },
+  phaseOrder: { type: Number, required: true },
   status: {
     type: String,
     enum: ["Pending", "Active", "Completed"],
     default: "Pending",
   },
-  // This will hold the IDs of all matches in this phase
   matches: [
     {
       type: Schema.Types.ObjectId,
@@ -20,14 +18,12 @@ const phaseSchema = new Schema({
 
 const stageSchema = new Schema({
   stageOrder: { type: Number, required: true },
-  stageName: { type: String, required: true }, // "Proving Grounds", "Finals"
+  stageName: { type: String, required: true },
   stageType: {
     type: String,
     enum: ["League", "Knockout"],
     required: true,
   },
-  // This is a dynamic reference. It can link to a document in either
-  // the 'League' or 'Knockout' collection based on the 'stageType' field.
   stageData: {
     type: Schema.Types.ObjectId,
     required: true,
@@ -67,21 +63,51 @@ const tournamentSchema = new Schema(
       type: Number,
       required: true,
     },
-    // An array of teams participating in this tournament
+
+    participantType: {
+      type: String,
+      enum: ["User", "Team"],
+      default: "Team",
+    },
+
     teams: [
       {
         type: Schema.Types.ObjectId,
-        ref: "Team",
+        refPath: "participantType",
       },
     ],
-    // The Trifecta phases will be an array of documents within the tournament
+
     phases: [phaseSchema],
-    // The stages will be an array of documents within the tournament
     stages: [stageSchema],
+
+    // ==========================================
+    // HALL OF FAME & PLACEMENT TRACKING
+    // ==========================================
     champion: {
       type: Schema.Types.ObjectId,
-      ref: "Team", // Can be null until the end
+      refPath: "participantType",
     },
+    runnerUp: {
+      type: Schema.Types.ObjectId,
+      refPath: "participantType",
+    },
+    thirdPlace: {
+      type: Schema.Types.ObjectId,
+      refPath: "participantType",
+    },
+
+    hallOfFame: {
+      mvp: { type: Schema.Types.ObjectId, ref: "User" },
+      topScorer: { type: Schema.Types.ObjectId, ref: "User" },
+      topDefender: { type: Schema.Types.ObjectId, ref: "User" },
+
+      // Custom Classico Awards
+      grindMaster: { type: Schema.Types.ObjectId, ref: "User" }, 
+      nemesis: { type: Schema.Types.ObjectId, ref: "User" }, 
+      giantKillers: [{ type: Schema.Types.ObjectId, ref: "User" }], 
+    },
+    // ==========================================
+
     entryFee: {
       type: Number,
       required: true,
@@ -98,26 +124,24 @@ const tournamentSchema = new Schema(
     prizes: {
       totalPool: {
         type: Number,
-        required: true, // e.g., 4400
+        required: true,
       },
-      // Array for rank-based prizes (1st, 2nd, etc.)
       placements: [
         {
           position: {
-            type: String, // Using String is flexible (e.g., "1st Place", "Runner-Up")
+            type: String,
             required: true,
           },
           amount: {
-            type: Number, // Storing the prize as a Number is crucial for calculations
+            type: Number,
             required: true,
           },
         },
       ],
-      // Array for individual skill-based awards
       individualAwards: [
         {
           awardName: {
-            type: String, // e.g., "MVP of the Tournament"
+            type: String,
             required: true,
           },
           amount: {
@@ -128,6 +152,14 @@ const tournamentSchema = new Schema(
       ],
     },
     metadata: {
+      // --- NEW: Future-Proof Completion Logic ---
+      finalRoundName: { 
+        type: String, 
+        default: "Grand Final" // Change this per tournament generation
+      },
+      giantKillers: [{ type: Schema.Types.ObjectId, ref: "User" }], 
+      // ------------------------------------------
+
       rmaTeamScore: { type: Number, default: 0 },
       barcaTeamScore: { type: Number, default: 0 },
       phase3Submissions: {

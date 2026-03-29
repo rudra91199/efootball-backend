@@ -5,6 +5,7 @@ import { generateLeagueLeaderboard } from "../league/league.services.js";
 import { Match } from "../match/match.model.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { Tournament } from "../tournaments/tournament.model.js";
+import { finalizeTournament } from "../tournaments/tournament.services.js";
 import { User } from "../users/user.model.js";
 import { Knockout } from "./knockout.model.js";
 
@@ -423,6 +424,7 @@ export const runPhase3PagePlayoffEngine = async (knockoutId) => {
       team2: winnerC,
       status: "Unpublished",
     });
+
     knockout.rounds
       .find((r) => r.roundName === "Grand Final")
       .matches.push(grandFinal._id);
@@ -455,10 +457,7 @@ export const runPhase3PagePlayoffEngine = async (knockoutId) => {
     console.log("Grand Final complete. Finalizing tournament...");
     knockout.status = "Completed";
     await knockout.save();
-    await Tournament.findByIdAndUpdate(tournamentId, {
-      status: "Completed",
-      champion: matchD.winner,
-    });
+    await finalizeTournament(tournamentId, matchD._id);
   }
 };
 

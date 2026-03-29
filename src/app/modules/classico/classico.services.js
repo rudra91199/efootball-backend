@@ -12,6 +12,7 @@ import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { Series } from "../series/series.model.js";
 import { Team } from "../team/team.model.js";
 import { Tournament } from "../tournaments/tournament.model.js";
+import { finalizeTournament } from "../tournaments/tournament.services.js";
 import { Knockout } from "../knockout/knockout.model.js";
 
 export const registerClassicoTeam = async (payload) => {
@@ -144,26 +145,6 @@ export const generatePhase1Fixtures = async (tournamentId) => {
     message: "Phase 1 Generated Successfully",
     totalMatches: createdMatches.length,
   };
-};
-
-const finalizeTournamentIfComplete = async (tournamentId) => {
-  // 1. Count any matches in this tournament that are NOT 'Completed'
-  const pendingMatchesCount = await Match.countDocuments({
-    tournament: tournamentId,
-    status: { $ne: "Completed" },
-  });
-
-  // 2. If no matches are left, close the tournament
-  if (pendingMatchesCount === 0) {
-    await Tournament.findByIdAndUpdate(tournamentId, {
-      status: "Completed",
-    });
-
-    console.log(`Tournament ${tournamentId} has been marked as Completed.`);
-
-    // Optional: You could also trigger the final Championship Points
-    // calculation here to ensure the winner is locked in.
-  }
 };
 
 export const updateClassicoMatch = async (payload) => {
@@ -333,20 +314,20 @@ export const updateClassicoMatch = async (payload) => {
       // Determine which team is currently trailing (Losing Team in overall points)
       const pointsData = await ChampionshipPoint.find({
         tournament: match.tournament,
-      });
-      const rmaPoints = pointsData.find((p) =>
-        p.team.equals(tournament.teams[0]),
+      }).populate("team");
+      const rmaPoints = pointsData.find(
+        (p) => p.team.name === "Real Madrid",
       ).total_points;
-      const barcaPoints = pointsData.find((p) =>
-        p.team.equals(tournament.teams[1]),
+      const barcaPoints = pointsData.find(
+        (p) => p.team.name === "FC Barcelona",
       ).total_points;
 
       const isWinnerCurrentlyLosing =
-        (winnerTeam.name.includes("Madrid") && rmaPoints < barcaPoints) ||
-        (winnerTeam.name.includes("Barcelona") && barcaPoints < rmaPoints);
+        (winnerTeam.name.includes("Real Madrid") && rmaPoints < barcaPoints) ||
+        (winnerTeam.name.includes("FC Barcelona") && barcaPoints < rmaPoints);
 
       // Identify metadata key for bonus tracking
-      const bonusKey = winnerTeam.name.includes("Madrid")
+      const bonusKey = winnerTeam.name.includes("Real Madrid")
         ? "rmaBonusClaimed"
         : "barcaBonusClaimed";
 
@@ -371,6 +352,15 @@ export const updateClassicoMatch = async (payload) => {
         if (isWinnerLowRank && isLoserHighRank) {
           pointsToAdd += 3; // The +5 Bonus
           tournament.metadata[bonusKey] = true; // Mark as "Used Up"
+
+          // ==========================================
+          // PLACE THE GIANT KILL HERE:
+          // ==========================================
+          if (!tournament.metadata.giantKillers)
+            tournament.metadata.giantKillers = [];
+          tournament.metadata.giantKillers.push(finalWinnerId);
+          // This saves the player's ID so finalizeTournament can find it later.
+
           await tournament.save();
         }
       }
@@ -381,7 +371,15 @@ export const updateClassicoMatch = async (payload) => {
         pointsToAdd,
         "phase3_points",
       );
-      await finalizeTournamentIfComplete(match.tournament);
+      const pendingCount = await Match.countDocuments({
+        tournament: match.tournament,
+        status: { $ne: "Completed" },
+      });
+      if (pendingCount === 0) {
+        await finalizeTournament(match.tournament);
+        // tournament.status = "Completed";
+        // await tournament.save();
+      }
     }
 
     return { success: true, match };
