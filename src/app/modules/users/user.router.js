@@ -23,13 +23,13 @@ router.get(
 
 router.patch(
   "/editProfile",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.editProfile
 );
 
 router.patch(
   "/changePassword",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.changePassword
 );
 router.patch(
@@ -48,61 +48,61 @@ router.get(
 
 router.get(
   "/getUsersForRegistration",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.referee, USER_ROLES.player),
   UserController.getUsersFroRegistration
 );
 
 // player data
 router.get(
   "/:playerId/tournaments",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getPlayerTournaments
 );
 
 router.get(
   "/leaderboard/global",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getGlobalLeaderboard
 );
 
 router.get(
   "/leaderboards/tournament/:tournamentId",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getPlayerLeaderboard
 );
 
 router.get(
   "/leaderboards/tournament/:tournamentId/player/:playerId/matches",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getPlayerTournamentMatches
 );
 
 router.get(
   "/playerStatsBySeason/:playerId",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getPlayerStatsBySeason
 );
 router.get(
   "/getMatchHistory/:playerId",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getPlayerMatchHistory
 );
 
 router.get(
   "/h2h/:player1Id/:player2Id",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getHeadToHeadStats
 );
 
 router.get(
   "/getFullStats/:playerId",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getPlayerFullStats
 );
 
 router.get(
   "/getScoringStats/:playerId",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   UserController.getPlayerScoringStats
 );
 
@@ -119,6 +119,6 @@ router.patch(
 );
 
 // ?tournamentId=global OR ?tournamentId=123456789
-router.get("/compare/:player1Id/:player2Id", auth(USER_ROLES.admin, USER_ROLES.player), UserController.getPlayerComparison);
+router.get("/compare/:player1Id/:player2Id", auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee), UserController.getPlayerComparison);
 
 export const UserRoutes = router;

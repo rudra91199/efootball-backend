@@ -7,8 +7,8 @@ const router = Router();
 
 router.post(
   "/publish-round/:seriesId",
-  auth(USER_ROLES.admin),
-  SeriesController.publishSeries
+  auth(USER_ROLES.admin, USER_ROLES.referee),
+  SeriesController.publishSeries,
 );
 
 export const SeriesRoutes = router;

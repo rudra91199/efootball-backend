@@ -36,9 +36,8 @@ const getAllTournamentsForAdmin = catchAsync(async (req, res) => {
 
 const getSingleTournament = catchAsync(async (req, res) => {
   const { tournamentId } = req.params;
-  const response = await TournamentServices.getSingleTournamentFromDB(
-    tournamentId
-  );
+  const response =
+    await TournamentServices.getSingleTournamentFromDB(tournamentId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -64,7 +63,7 @@ const updateTournamentStatus = catchAsync(async (req, res) => {
   const { status } = req.body;
   const updatedTournament = await TournamentServices.updateTournamentStatusInDB(
     id,
-    status
+    status,
   );
   sendResponse(res, {
     success: true,
@@ -88,7 +87,7 @@ const generateRoundRobinFixtures = catchAsync(async (req, res) => {
   // Call the generation function
   const result = await TournamentServices.generateRoundRobinFixtures(
     id,
-    teamIds
+    teamIds,
   );
 
   sendResponse(res, {
@@ -102,9 +101,8 @@ const generateRoundRobinFixtures = catchAsync(async (req, res) => {
 // Controller to generate phase 1 leaderboard
 const generatePhase1Leaderbaord = catchAsync(async (req, res) => {
   const { tournamentId } = req.params;
-  const leaderboard = await TournamentServices.generatePhase1Leaderboard(
-    tournamentId
-  );
+  const leaderboard =
+    await TournamentServices.generatePhase1Leaderboard(tournamentId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -116,9 +114,8 @@ const generatePhase1Leaderbaord = catchAsync(async (req, res) => {
 // Controller to finalize phase 1 and generate phase 2 fixtures
 const generatePhase2fixtures = catchAsync(async (req, res) => {
   const { tournamentId } = req.params;
-  const response = await TournamentServices.generatePhase2GauntletFixtures(
-    tournamentId
-  );
+  const response =
+    await TournamentServices.generatePhase2GauntletFixtures(tournamentId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -130,9 +127,8 @@ const generatePhase2fixtures = catchAsync(async (req, res) => {
 // Controller to generate final seeding leaderboard after phase 2
 const generateFinalSeedingLeaderboard = catchAsync(async (req, res) => {
   const { tournamentId } = req.params;
-  const response = await TournamentServices.generateFinalSeedingLeaderboard(
-    tournamentId
-  );
+  const response =
+    await TournamentServices.generateFinalSeedingLeaderboard(tournamentId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -150,9 +146,8 @@ export const startPhase3 = async (req, res) => {
     throw new ApiError(404, "Tournament not found");
   }
 
-  const response = await TournamentServices.generatePhase3Fixtures(
-    tournamentId
-  );
+  const response =
+    await TournamentServices.generatePhase3Fixtures(tournamentId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
@@ -163,14 +158,33 @@ export const startPhase3 = async (req, res) => {
 
 const getPlayerStatusesForTournament = catchAsync(async (req, res) => {
   const { tournamentId } = req.params;
-  const statusMap = await TournamentServices.getPlayerStatusesForTournament(
-    tournamentId
-  );
+  const statusMap =
+    await TournamentServices.getPlayerStatusesForTournament(tournamentId);
   sendResponse(res, {
     success: true,
     statusCode: 200,
     message: "Player statuses retrieved successfully.",
     data: statusMap,
+  });
+});
+
+const fixHallOfFame = catchAsync(async (req, res) => {
+  const result = await TournamentServices.retroactivelyFixHallOfFame();
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Hall of Fame historically updated.",
+    data: result,
+  });
+});
+
+const getHallOfFame = catchAsync(async (req, res) => {
+  const data = await TournamentServices.getHallOfFameTournaments();
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Hall of Fame data retrieved successfully.",
+    data: data,
   });
 });
 
@@ -187,4 +201,6 @@ export const TournamentControllers = {
   startPhase3,
   getPlayerStatusesForTournament,
   getAllTournamentsForAdmin,
+  fixHallOfFame,
+  getHallOfFame,
 };

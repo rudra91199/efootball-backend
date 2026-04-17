@@ -7,7 +7,7 @@ const router = Router();
 
 router.post(
   "/register",
-  auth(USER_ROLES.admin, USER_ROLES.player),
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
   TeamsControllers.registerTeam
 );
 router.get(

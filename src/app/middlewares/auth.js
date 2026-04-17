@@ -8,10 +8,15 @@ const auth = (...requiredRoles) => {
   return catchAsync(async (req, res, next) => {
     const token = req.headers.authorization;
     if (!token) {
-      throw new ApiError(400, "You are not authorized! ");
+      throw new ApiError(401, "You are not authorized! ");
     }
 
-    const decoded = verifyToken(token, config.jwt_secret);
+    let decoded;
+    try {
+      decoded = verifyToken(token, config.jwt_secret);
+    } catch (err) {
+      throw new ApiError(401, "Unauthorized: Invalid or expired token.");
+    }
 
     const { userId, role, iat } = decoded;
 
@@ -23,7 +28,7 @@ const auth = (...requiredRoles) => {
     // check if the user is deleted
     const isDeletedUser = user.isDeleted;
     if (isDeletedUser) {
-      throw new ApiError(404, "This user is deleted.");
+      throw new ApiError(403, "This user is deleted.");
     }
 
     //checking if the user is blocked
@@ -48,7 +53,7 @@ const auth = (...requiredRoles) => {
     if (requiredRoles && !requiredRoles.includes(role)) {
       throw new ApiError(
         403,
-        "You do not have permission to access this resource."
+        "You do not have permission to access this resource.",
       );
     }
     req.user = decoded;

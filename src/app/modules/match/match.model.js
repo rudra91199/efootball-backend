@@ -6,7 +6,7 @@ const squadSubmissionSchema = new Schema(
     first_day_player: { type: Schema.Types.ObjectId, ref: "Player" },
     late_night_player: { type: Schema.Types.ObjectId, ref: "Player" },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const matchSchema = new Schema(
@@ -63,7 +63,10 @@ const matchSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "Team", // Can be null until the match is completed
     },
-    orangeCardedPlayers: [{ type: Schema.Types.ObjectId, ref: 'users' }],
+    isGiantKill: {
+      type: Boolean,
+    },
+    orangeCardedPlayers: [{ type: Schema.Types.ObjectId, ref: "users" }],
     details: {
       subMatches: [
         {
@@ -87,10 +90,10 @@ const matchSchema = new Schema(
         },
       ],
     },
-    series:{
+    series: {
       type: Schema.Types.ObjectId,
       ref: "Series",
-      default: null
+      default: null,
     },
     status: {
       type: String,
@@ -102,7 +105,7 @@ const matchSchema = new Schema(
       default: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const Match = model("Match", matchSchema);

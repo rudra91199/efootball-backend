@@ -80,7 +80,6 @@ const getAllUsers = catchAsync(async (req, res) => {
   });
 });
 
-
 const getUserBasicInfo = catchAsync(async (req, res) => {
   const { userId } = req.params;
   const userInfo = await UserServices.getUserBasicInfo(userId);
@@ -127,9 +126,8 @@ const getGlobalLeaderboard = catchAsync(async (req, res) => {
 
 const getPlayerLeaderboard = catchAsync(async (req, res) => {
   const { tournamentId } = req.params;
-  const leaderboard = await UserServices.generatePlayerLeaderboard(
-    tournamentId
-  );
+  const leaderboard =
+    await UserServices.generatePlayerLeaderboard(tournamentId);
   sendResponse(res, {
     statusCode: 200,
     success: true,
@@ -141,11 +139,11 @@ const getPlayerLeaderboard = catchAsync(async (req, res) => {
 const getPlayerTournamentMatches = catchAsync(async (req, res) => {
   // Extract both IDs from the URL params
   const { tournamentId, playerId } = req.params;
-  
+
   // Call the service we just created
   const matches = await UserServices.getPlayerTournamentMatches(
     tournamentId,
-    playerId
+    playerId,
   );
 
   // Send the formatted response
@@ -181,9 +179,9 @@ const getPlayerMatchHistory = catchAsync(async (req, res) => {
 
 const getHeadToHeadStats = catchAsync(async (req, res) => {
   const { player1Id, player2Id } = req.params;
-  
+
   const h2hData = await UserServices.getHeadToHeadStats(player1Id, player2Id);
-  
+
   sendResponse(res, {
     statusCode: 200,
     success: true,
@@ -265,8 +263,12 @@ const getPlayerComparison = catchAsync(async (req, res) => {
   const { player1Id, player2Id } = req.params;
   const { tournamentId } = req.query; // Pass "global" or specific ID via query
 
-  const response = await UserServices.getPlayerComparison(player1Id, player2Id, tournamentId);
-  
+  const response = await UserServices.getPlayerComparison(
+    player1Id,
+    player2Id,
+    tournamentId,
+  );
+
   sendResponse(res, {
     statusCode: 200,
     success: true,
@@ -276,7 +278,6 @@ const getPlayerComparison = catchAsync(async (req, res) => {
 });
 
 // Add to exports
-
 
 export const UserController = {
   getPlayerComparison,

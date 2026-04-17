@@ -7,14 +7,14 @@ const router = Router();
 
 router.get(
   "/get-all-rules",
-  // auth(USER_ROLES.admin, USER_ROLES.player),
-  RulesControllers.getRulesController
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
+  RulesControllers.getRulesController,
 );
 
 router.post(
   "/create",
   auth(USER_ROLES.admin),
-  RulesControllers.updateRulesController
+  RulesControllers.updateRulesController,
 );
 
 export const RulesRoutes = router;

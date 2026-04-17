@@ -7,10 +7,8 @@ const router = Router();
 
 router.get(
   "/getTournamentMatches/:tournamentId",
-  auth(USER_ROLES.admin, USER_ROLES.player),
-  MatchHistoryControllers.getTournamentMatches
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
+  MatchHistoryControllers.getTournamentMatches,
 );
-
-
 
 export const MatchHistoryRoutes = router;

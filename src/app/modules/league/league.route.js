@@ -7,20 +7,33 @@ const router = Router();
 
 router.post(
   "/:leagueId/:tournamentId/register",
-  auth(USER_ROLES.admin, USER_ROLES.player),
-  LeagueControllers.registerPlayerInLeague
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
+  LeagueControllers.registerPlayerInLeague,
 );
-router.post("/:leagueId/generate-fixtures", LeagueControllers.generateFixtures);
-router.get("/:leagueId", LeagueControllers.getLeagueById);
-router.patch("/:leagueId/publish-rounds", LeagueControllers.publishRounds);
+router.post(
+  "/:leagueId/generate-fixtures",
+  auth(USER_ROLES.admin),
+  LeagueControllers.generateFixtures,
+);
+router.get(
+  "/:leagueId",
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
+  LeagueControllers.getLeagueById,
+);
+router.patch(
+  "/:leagueId/publish-rounds",
+  auth(USER_ROLES.admin, USER_ROLES.referee),
+  LeagueControllers.publishRounds,
+);
 router.get(
   "/generate-leaderboard/:leagueId",
-  LeagueControllers.generateLeaderboard
+  auth(USER_ROLES.admin, USER_ROLES.player, USER_ROLES.referee),
+  LeagueControllers.generateLeaderboard,
 );
 router.post(
   "/finalize-phase1-and-generate-gauntlet/:leagueId",
   auth(USER_ROLES.admin),
-  LeagueControllers.finalizePhase1AndGenerateGauntlet
+  LeagueControllers.finalizePhase1AndGenerateGauntlet,
 );
 
 export const LeagueRoutes = router;

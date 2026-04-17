@@ -12,6 +12,7 @@ import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { Series } from "../series/series.model.js";
 import { Team } from "../team/team.model.js";
 import { Tournament } from "../tournaments/tournament.model.js";
+import { finalizeTournament } from "../tournaments/tournament.services.js";
 import { Knockout } from "../knockout/knockout.model.js";
 
 export const registerClassicoTeam = async (payload) => {
@@ -144,26 +145,6 @@ export const generatePhase1Fixtures = async (tournamentId) => {
     message: "Phase 1 Generated Successfully",
     totalMatches: createdMatches.length,
   };
-};
-
-const finalizeTournamentIfComplete = async (tournamentId) => {
-  // 1. Count any matches in this tournament that are NOT 'Completed'
-  const pendingMatchesCount = await Match.countDocuments({
-    tournament: tournamentId,
-    status: { $ne: "Completed" },
-  });
-
-  // 2. If no matches are left, close the tournament
-  if (pendingMatchesCount === 0) {
-    await Tournament.findByIdAndUpdate(tournamentId, {
-      status: "Completed",
-    });
-
-    console.log(`Tournament ${tournamentId} has been marked as Completed.`);
-
-    // Optional: You could also trigger the final Championship Points
-    // calculation here to ensure the winner is locked in.
-  }
 };
 
 export const updateClassicoMatch = async (payload) => {
@@ -333,20 +314,20 @@ export const updateClassicoMatch = async (payload) => {
       // Determine which team is currently trailing (Losing Team in overall points)
       const pointsData = await ChampionshipPoint.find({
         tournament: match.tournament,
-      });
-      const rmaPoints = pointsData.find((p) =>
-        p.team.equals(tournament.teams[0]),
+      }).populate("team");
+      const rmaPoints = pointsData.find(
+        (p) => p.team.name === "Real Madrid",
       ).total_points;
-      const barcaPoints = pointsData.find((p) =>
-        p.team.equals(tournament.teams[1]),
+      const barcaPoints = pointsData.find(
+        (p) => p.team.name === "FC Barcelona",
       ).total_points;
 
       const isWinnerCurrentlyLosing =
-        (winnerTeam.name.includes("Madrid") && rmaPoints < barcaPoints) ||
-        (winnerTeam.name.includes("Barcelona") && barcaPoints < rmaPoints);
+        (winnerTeam.name.includes("Real Madrid") && rmaPoints < barcaPoints) ||
+        (winnerTeam.name.includes("FC Barcelona") && barcaPoints < rmaPoints);
 
       // Identify metadata key for bonus tracking
-      const bonusKey = winnerTeam.name.includes("Madrid")
+      const bonusKey = winnerTeam.name.includes("Real Madrid")
         ? "rmaBonusClaimed"
         : "barcaBonusClaimed";
 
@@ -370,7 +351,18 @@ export const updateClassicoMatch = async (payload) => {
 
         if (isWinnerLowRank && isLoserHighRank) {
           pointsToAdd += 3; // The +5 Bonus
+          match.isGiantKill = true; // Mark this match as a Giant Kill for frontend badges
           tournament.metadata[bonusKey] = true; // Mark as "Used Up"
+
+          // ==========================================
+          // PLACE THE GIANT KILL HERE:
+          // ==========================================
+          if (!tournament.metadata.giantKillers)
+            tournament.metadata.giantKillers = [];
+          tournament.metadata.giantKillers.push(finalWinnerId);
+          // This saves the player's ID so finalizeTournament can find it later.
+
+          await match.save();
           await tournament.save();
         }
       }
@@ -381,7 +373,15 @@ export const updateClassicoMatch = async (payload) => {
         pointsToAdd,
         "phase3_points",
       );
-      await finalizeTournamentIfComplete(match.tournament);
+      const pendingCount = await Match.countDocuments({
+        tournament: match.tournament,
+        status: { $ne: "Completed" },
+      });
+      if (pendingCount === 0) {
+        await finalizeTournament(match.tournament);
+        // tournament.status = "Completed";
+        // await tournament.save();
+      }
     }
 
     return { success: true, match };
@@ -1122,7 +1122,12 @@ export const getGlobalPlayerLeaderboardclassico = async (tournamentId) => {
 // };
 export const getChampionshipLeaderboard = async (tournamentId) => {
   return await MatchHistory.aggregate([
-    { $match: { tournament: new mongoose.Types.ObjectId(tournamentId) } },
+    {
+      $match: {
+        tournament: new mongoose.Types.ObjectId(tournamentId),
+        result: { $ne: "Pending" },
+      },
+    },
 
     // 1. Link to Matches to identify Phases
     {
@@ -1135,12 +1140,15 @@ export const getChampionshipLeaderboard = async (tournamentId) => {
     },
     { $unwind: "$m" },
 
-    // 2. Assign Points per Phase logic
+    // 2. Assign Points per Phase logic + Grab Goals and Wins
     {
       $project: {
         player: 1,
         result: 1,
         seriesId: "$m.series",
+        scoreFor: 1, // Pass goals forward
+        scoreAgainst: 1, // Pass goals forward
+        isWin: { $cond: [{ $eq: ["$result", "Win"] }, 1, 0] }, // Count wins
         // Phase 1: Check for league field
         p1: {
           $cond: [
@@ -1166,19 +1174,23 @@ export const getChampionshipLeaderboard = async (tournamentId) => {
                 { $eq: ["$result", "Win"] },
               ],
             },
-            2,
-            0,
+            // If it's an Iron Curtain win, check if the Match was flagged as a Giant Kill
+            { $cond: [{ $eq: ["$m.isGiantKill", true] }, 5, 2] },
+            0, // Not an Iron Curtain win
           ],
         },
       },
     },
 
-    // 3. Group by Player + Series to catch Phase 2 (3 pts)
+    // 3. Group by Player + Series to catch Phase 2 (3 pts) AND sum temporary stats
     {
       $group: {
         _id: { player: "$player", series: "$seriesId" },
         p1Total: { $sum: "$p1" },
         p3Total: { $sum: "$p3" },
+        gfTemp: { $sum: "$scoreFor" }, // Temporary GF sum
+        gaTemp: { $sum: "$scoreAgainst" }, // Temporary GA sum
+        winsTemp: { $sum: "$isWin" }, // Temporary Wins sum
       },
     },
 
@@ -1208,7 +1220,7 @@ export const getChampionshipLeaderboard = async (tournamentId) => {
       },
     },
 
-    // 5. Aggregate back to individual players
+    // 5. Aggregate back to individual players (Final totals)
     {
       $group: {
         _id: "$_id.player",
@@ -1216,8 +1228,14 @@ export const getChampionshipLeaderboard = async (tournamentId) => {
         p2: { $sum: "$p2Total" },
         p3: { $sum: "$p3Total" },
         playerTotal: { $sum: { $add: ["$p1Total", "$p2Total", "$p3Total"] } },
+        gf: { $sum: "$gfTemp" }, // Final GF
+        ga: { $sum: "$gaTemp" }, // Final GA
+        wins: { $sum: "$winsTemp" }, // Final Wins
       },
     },
+
+    // Calculate Goal Difference (GD)
+    { $addFields: { gd: { $subtract: ["$gf", "$ga"] } } },
 
     // 6. Join User and Team info
     {
@@ -1245,7 +1263,8 @@ export const getChampionshipLeaderboard = async (tournamentId) => {
     // 7. Group by Team to create the Nested Structure
     {
       $group: {
-        _id: "$team.name",
+        _id: "$team._id",
+        teamName: { $first: "$team.name" },
         teamLogo: { $first: "$team.logo.url" },
         teamP1: { $sum: "$p1" },
         teamP2: { $sum: "$p2" },
@@ -1259,6 +1278,11 @@ export const getChampionshipLeaderboard = async (tournamentId) => {
             p3: "$p3",
             image: "$profile.image.url",
             total: "$playerTotal",
+            // INJECTED STATS FOR TIE-BREAKERS:
+            wins: "$wins",
+            gf: "$gf",
+            ga: "$ga",
+            gd: "$gd",
           },
         },
       },
