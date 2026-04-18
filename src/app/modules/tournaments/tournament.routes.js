@@ -93,4 +93,20 @@ router.post(
   TournamentControllers.fixHallOfFame,
 );
 
+// --- NEW HALL OF FAME ROUTES ---
+
+// 1. Temporary Admin Route to fix old tournaments
+router.post(
+  "/admin/fix-hof",
+  auth(USER_ROLES.admin), // Assuming you have this auth middleware
+  TournamentControllers.fixHallOfFame
+);
+
+// 2. Public route for the frontend to fetch the Hall of Fame
+router.get(
+  "/hall-of-fame",
+  auth(USER_ROLES.admin, USER_ROLES.player),
+  TournamentControllers.getHallOfFame
+);
+
 export const TournamentRoutes = router;
