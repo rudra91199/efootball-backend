@@ -392,6 +392,120 @@ export const finalizeTournament = async (tournamentId, finalMatchId) => {
   }
 };
 
+// ==========================================
+// 3. PUBLIC HALL OF FAME FETCHER (V-SHAPE ENGINE)
+// ==========================================
+export const getHallOfFameTournaments = async () => {
+  const tournaments = await Tournament.find({
+    status: "Completed",
+    hallOfFame: { $ne: null },
+  })
+    .sort({ createdAt: -1 })
+    .select(
+      "name type participantType metadata champion runnerUp hallOfFame createdAt updatedAt",
+    )
+    .populate({
+      path: "champion runnerUp",
+      select: "name inGameUserName image avatar logo players",
+      populate: {
+        path: "players",
+        select: "name inGameUserName image avatar",
+        strictPopulate: false, 
+      },
+    })
+    .populate({
+      path: "hallOfFame",
+      populate: [
+        {
+          path: "awards.user",
+          select: "name inGameUserName image avatar logo players captain", 
+          strictPopulate: false,
+          populate: [
+            {
+              path: "players",
+              select: "name inGameUserName image avatar",
+              strictPopulate: false,
+            },
+            {
+              path: "captain",
+              select: "name inGameUserName image avatar",
+              strictPopulate: false,
+            }
+          ]
+        },
+        {
+          path: "awards.teamContext",
+          select: "name logo",
+          strictPopulate: false, 
+        },
+      ],
+    });
+
+  // RANKING ENGINE FOR TEAM V-SHAPE DISPLAY
+  for (let tDoc of tournaments) {
+    if (!tDoc.hallOfFame) continue;
+
+    for (let award of tDoc.hallOfFame.awards) {
+      // Check if it's a team with more than 3 players
+      if (award.userModel === "Team" && award.user && award.user.players && award.user.players.length > 3) {
+        const teamPlayers = award.user.players;
+        const captainId = getStrId(award.user.captain);
+
+        // 1. Get stats for ALL players in this team for this tournament: Wins > GD > GF
+        const playerPerformance = await MatchHistory.aggregate([
+          { 
+            $match: { 
+              tournament: tDoc._id, 
+              player: { $in: teamPlayers.map(p => p._id) },
+              result: { $ne: "Pending" }
+            } 
+          },
+          {
+            $group: {
+              _id: "$player",
+              wins: { $sum: { $cond: [{ $eq: ["$result", "Win"] }, 1, 0] } },
+              gf: { $sum: "$scoreFor" },
+              ga: { $sum: "$scoreAgainst" }
+            }
+          },
+          { $addFields: { gd: { $subtract: ["$gf", "$ga"] } } },
+          { $sort: { wins: -1, gd: -1, gf: -1 } }
+        ]);
+
+        // 2. Map performance results back to player objects
+        const sortedPlayerObjects = playerPerformance.map(perf => 
+          teamPlayers.find(tp => getStrId(tp) === getStrId(perf._id))
+        ).filter(Boolean);
+
+        // 3. Include any players who didn't play a match (at the bottom)
+        const unplayedPlayers = teamPlayers.filter(tp => 
+          !playerPerformance.some(perf => getStrId(perf._id) === getStrId(tp))
+        );
+        const fullRankedList = [...sortedPlayerObjects, ...unplayedPlayers];
+
+        // 4. V-SHAPE RULE: [CAPTAIN, STAR1, STAR2, STAR3, ...OTHERS]
+        const captainObj = teamPlayers.find(tp => getStrId(tp) === captainId) || teamPlayers[0];
+        
+        // Find top 3 performers WHO ARE NOT the captain
+        const starsExcludingCaptain = fullRankedList
+          .filter(p => getStrId(p) !== getStrId(captainObj))
+          .slice(0, 3);
+          
+        // Gather the remaining roster members
+        const remainingPlayers = fullRankedList.filter(p => 
+            getStrId(p) !== getStrId(captainObj) && 
+            !starsExcludingCaptain.some(s => getStrId(s) === getStrId(p))
+        );
+
+        // 5. Re-order the players array for the frontend: [0]=Captain, [1..3]=Top Stars
+        award.user.players = [captainObj, ...starsExcludingCaptain, ...remainingPlayers].filter(Boolean);
+      }
+    }
+  }
+
+  return tournaments;
+};
+
 // --- HELPER: MASSACRE AWARDS (Wins > GD > GF) ---
 async function calculateMassacreHoF(tournament) {
   const awardsArray = [];
@@ -420,7 +534,7 @@ async function calculateMassacreHoF(tournament) {
         { label: "Championship Pts", value: mvp.total },
         { label: "Total Wins", value: mvp.wins || 0 },
         { label: "Goal Difference", value: mvp.gd },
-        { label: "Goals Scored", value: mvp.gf || 0 }, // Added 4th stat
+        { label: "Goals Scored", value: mvp.gf || 0 }, 
       ],
     });
   }
@@ -521,7 +635,6 @@ async function calculateMassacreHoF(tournament) {
     const uniqueKillers = [...new Set(tournament.metadata.giantKillers)];
     for (const killerId of uniqueKillers) {
       
-      // Calculate specific stats for the Giant Killer to ensure they have 4 stats
       const killerStats = await MatchHistory.aggregate([
         { $match: { tournament: tournament._id, player: new mongoose.Types.ObjectId(killerId), result: { $ne: "Pending" } } },
         { $group: { _id: "$player", mp: { $sum: 1 }, wins: { $sum: { $cond: [{ $eq: ["$result", "Win"] }, 1, 0] } }, gf: { $sum: "$scoreFor" } } }
@@ -573,8 +686,8 @@ async function calculateStandardHoF(tournament) {
       stats: [
         { label: "Matches Played", value: scorer[0].mp },
         { label: "Goals Scored", value: scorer[0].totalGoals },
-        { label: "Wins", value: scorer[0].wins }, // Added 3rd stat
-        { label: "Goals/Match", value: gpm }      // Added 4th stat
+        { label: "Wins", value: scorer[0].wins }, 
+        { label: "Goals/Match", value: gpm }      
       ],
     });
   }
@@ -601,8 +714,8 @@ async function calculateStandardHoF(tournament) {
       stats: [
         { label: "Matches Played", value: defender[0].mp },
         { label: "Clean Sheets", value: defender[0].cleanSheets },
-        { label: "Goals Against", value: defender[0].ga }, // Added 3rd stat
-        { label: "CS Rate", value: `${csPct}%` },          // Added 4th stat
+        { label: "Goals Against", value: defender[0].ga }, 
+        { label: "CS Rate", value: `${csPct}%` },          
       ],
     });
   }
@@ -653,51 +766,6 @@ async function calculateStandardHoF(tournament) {
   });
   tournament.hallOfFame = newHoF._id;
 }
-
-// ==========================================
-// 3. PUBLIC HALL OF FAME FETCHER (FRONTEND)
-// ==========================================
-export const getHallOfFameTournaments = async () => {
-  const tournaments = await Tournament.find({
-    status: "Completed",
-    hallOfFame: { $ne: null },
-  })
-    .sort({ createdAt: -1 })
-    .select(
-      "name type participantType metadata champion runnerUp hallOfFame createdAt updatedAt",
-    )
-    .populate({
-      path: "champion runnerUp",
-      select: "name inGameUserName image avatar logo players",
-      populate: {
-        path: "players",
-        select: "name inGameUserName image avatar",
-        strictPopulate: false, 
-      },
-    })
-    .populate({
-      path: "hallOfFame",
-      populate: [
-        {
-          path: "awards.user",
-          select: "name inGameUserName image avatar logo players", 
-          strictPopulate: false,
-          populate: {
-            path: "players",
-            select: "name inGameUserName image avatar",
-            strictPopulate: false,
-          }
-        },
-        {
-          path: "awards.teamContext",
-          select: "name logo",
-          strictPopulate: false, 
-        },
-      ],
-    });
-
-  return tournaments;
-};
 
 export const HallOfFameServices = {
   retroactivelyFixHallOfFame,
