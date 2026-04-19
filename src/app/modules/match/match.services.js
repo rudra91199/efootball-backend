@@ -1,12 +1,12 @@
 import ApiError from "../../errors/ApiError.js";
 import { ChampionshipPoint } from "../championshipPoint/championshipPoint.model.js";
+import { finalizeTournament } from "../hallOfFame/hallOfFame.Services.js";
 import { Knockout } from "../knockout/knockout.model.js";
 import { runPhase3PagePlayoffEngine } from "../knockout/knockout.services.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { runPhase2GauntletEngine } from "../series/series.service.js";
 import { Tournament } from "../tournaments/tournament.model.js";
 import {
-  finalizeTournament,
   generatePhase1Leaderboard,
 } from "../tournaments/tournament.services.js";
 import { User } from "../users/user.model.js";

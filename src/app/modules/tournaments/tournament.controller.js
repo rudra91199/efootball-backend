@@ -168,25 +168,7 @@ const getPlayerStatusesForTournament = catchAsync(async (req, res) => {
   });
 });
 
-const fixHallOfFame = catchAsync(async (req, res) => {
-  const result = await TournamentServices.retroactivelyFixHallOfFame();
-  sendResponse(res, {
-    statusCode: 200,
-    success: true,
-    message: "Hall of Fame historically updated.",
-    data: result,
-  });
-});
 
-const getHallOfFame = catchAsync(async (req, res) => {
-  const data = await TournamentServices.getHallOfFameTournaments();
-  sendResponse(res, {
-    statusCode: 200,
-    success: true,
-    message: "Hall of Fame data retrieved successfully.",
-    data: data,
-  });
-});
 
 export const TournamentControllers = {
   createTournament,
@@ -201,6 +183,4 @@ export const TournamentControllers = {
   startPhase3,
   getPlayerStatusesForTournament,
   getAllTournamentsForAdmin,
-  fixHallOfFame,
-  getHallOfFame,
 };

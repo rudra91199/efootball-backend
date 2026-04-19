@@ -10,7 +10,17 @@ const hallOfFameSchema = new Schema(
     awards: [
       {
         awardName: { type: String, required: true }, // e.g., "Top Scorer", "Tournament MVP"
-        user: { type: Schema.Types.ObjectId, ref: "users", required: true },
+        user: {
+          type: Schema.Types.ObjectId,
+          refPath: "awards.userModel",
+          required: true,
+        },
+        userModel: {
+          type: String,
+          required: true,
+          enum: ["users", "Team"], // Must match your exact Mongoose model names
+          default: "users",
+        },
         stats: [
           {
             label: { type: String }, // e.g., "Win Rate", "Matches Played"

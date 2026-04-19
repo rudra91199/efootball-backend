@@ -12,8 +12,8 @@ import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { Series } from "../series/series.model.js";
 import { Team } from "../team/team.model.js";
 import { Tournament } from "../tournaments/tournament.model.js";
-import { finalizeTournament } from "../tournaments/tournament.services.js";
 import { Knockout } from "../knockout/knockout.model.js";
+import { finalizeTournament } from "../hallOfFame/hallOfFame.Services.js";
 
 export const registerClassicoTeam = async (payload) => {
   if (payload.logo) {
@@ -711,7 +711,7 @@ export const generateIronCurtainMatches = async (tournamentId) => {
       });
     });
 
-    await MatchHistory.insertMany(historyDocs, { session });
+    await MatchHistory.insertMany(historyDocs);
 
     // 6. Link the newly created stage to the Tournament document
     tournament.stages.push({

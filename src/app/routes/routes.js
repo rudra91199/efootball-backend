@@ -12,6 +12,8 @@ import { CircuitPointRoutes } from "../modules/circuitPoint/circuitPoint.routes.
 import { SeriesRoutes } from "../modules/series/series.routes.js";
 import { classicoRoutes } from "../modules/classico/classico.routes.js";
 import { championshipPointRoute } from "../modules/championshipPoint/championshipPoint.route.js";
+import { HallOfFameRoutes } from "../modules/hallOfFame/hallOfFame.routes.js";
+import { fixRoutes } from "../modules/fix/fix.routes.js";
 
 const router = Router();
 
@@ -68,6 +70,14 @@ const moduleRoutes = [
     path: "/championship-points",
     router: championshipPointRoute,
   },
+  {
+    path: "/hall-of-fame",
+    router: HallOfFameRoutes,
+  },
+  {
+    path: "/fix",
+    router: fixRoutes,
+  }
 ];
 
 moduleRoutes.forEach((route) => {

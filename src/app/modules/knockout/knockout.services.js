@@ -1,11 +1,11 @@
 import ApiError from "../../errors/ApiError.js";
 import { CircuitPoint } from "../circuitPoint/circuitPoint.model.js";
+import { finalizeTournament } from "../hallOfFame/hallOfFame.Services.js";
 import { League } from "../league/league.model.js";
 import { generateLeagueLeaderboard } from "../league/league.services.js";
 import { Match } from "../match/match.model.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { Tournament } from "../tournaments/tournament.model.js";
-import { finalizeTournament } from "../tournaments/tournament.services.js";
 import { User } from "../users/user.model.js";
 import { Knockout } from "./knockout.model.js";
 
