@@ -197,7 +197,7 @@ export const updateClassicoMatch = async (payload) => {
       team1_score: match.team1_score,
       team2_score: match.team2_score,
     };
-    await updateMatchHistoryHelper(matchForHistory);
+    await updateMatchHistoryHelper(match);
 
     // ======================================================
     //                 PROGRESSION ENGINE
@@ -302,7 +302,7 @@ export const updateClassicoMatch = async (payload) => {
         tournament: match.tournament,
         players: finalWinnerId,
       });
-
+     
       const loserId = match.team1.equals(finalWinnerId)
         ? match.team2
         : match.team1;
@@ -311,76 +311,93 @@ export const updateClassicoMatch = async (payload) => {
         players: loserId,
       });
 
-      // Determine which team is currently trailing (Losing Team in overall points)
-      const pointsData = await ChampionshipPoint.find({
-        tournament: match.tournament,
-      }).populate("team");
-      const rmaPoints = pointsData.find(
-        (p) => p.team.name === "Real Madrid",
-      ).total_points;
-      const barcaPoints = pointsData.find(
-        (p) => p.team.name === "FC Barcelona",
-      ).total_points;
+      if (winnerTeam && loserTeam) {
+        // 1. Identify which Faction the Winner and Loser belong to
+        const faction1Id = tournament.metadata.faction1.teamId;
+        const faction2Id = tournament.metadata.faction2.teamId;
 
-      const isWinnerCurrentlyLosing =
-        (winnerTeam.name.includes("Real Madrid") && rmaPoints < barcaPoints) ||
-        (winnerTeam.name.includes("FC Barcelona") && barcaPoints < rmaPoints);
+        const isWinnerFaction1 = winnerTeam._id.equals(faction1Id);
+        const winnerFactionKey = isWinnerFaction1 ? "faction1" : "faction2";
+        const loserFactionKey = isWinnerFaction1 ? "faction2" : "faction1";
 
-      // Identify metadata key for bonus tracking
-      const bonusKey = winnerTeam.name.includes("Real Madrid")
-        ? "rmaBonusClaimed"
-        : "barcaBonusClaimed";
+        // 2. Fetch Live Championship Points to determine who is trailing
+        const pointsData = await ChampionshipPoint.find({
+          tournament: match.tournament,
+        });
 
-      if (
-        winnerTeam &&
-        loserTeam &&
-        !tournament.metadata[bonusKey] &&
-        isWinnerCurrentlyLosing
-      ) {
-        const winnerRank = winnerTeam.playerRankings.find((r) =>
-          r.player.equals(finalWinnerId),
-        )?.rank;
-        const loserRank = loserTeam.playerRankings.find((r) =>
-          r.player.equals(loserId),
-        )?.rank;
+        const faction1Points =
+          pointsData.find((p) => p.team.equals(faction1Id))?.total_points || 0;
+        const faction2Points =
+          pointsData.find((p) => p.team.equals(faction2Id))?.total_points || 0;
 
-        // --- NEW TACTICAL BONUS LOGIC ---
-        // Condition: Winner (Losing Team) Rank 6-8 beats Loser (Winning Team) Rank 1-3
-        const isWinnerLowRank = winnerRank >= 6 && winnerRank <= 8;
-        const isLoserHighRank = loserRank >= 1 && loserRank <= 3;
+        const winnerOverallPoints = isWinnerFaction1
+          ? faction1Points
+          : faction2Points;
+        const loserOverallPoints = isWinnerFaction1
+          ? faction2Points
+          : faction1Points;
 
-        if (isWinnerLowRank && isLoserHighRank) {
-          pointsToAdd += 3; // The +5 Bonus
-          match.isGiantKill = true; // Mark this match as a Giant Kill for frontend badges
-          tournament.metadata[bonusKey] = true; // Mark as "Used Up"
+        // Is the winning team currently trailing overall?
+        const isWinnerCurrentlyLosing =
+          winnerOverallPoints < loserOverallPoints;
 
-          // ==========================================
-          // PLACE THE GIANT KILL HERE:
-          // ==========================================
-          if (!tournament.metadata.giantKillers)
-            tournament.metadata.giantKillers = [];
-          tournament.metadata.giantKillers.push(finalWinnerId);
-          // This saves the player's ID so finalizeTournament can find it later.
+        // 3. Check if the winner's faction has ALREADY used their Giant Kill bonus
+        const bonusAlreadyClaimed =
+          tournament.metadata[winnerFactionKey].bonusClaimed;
 
-          await match.save();
-          await tournament.save();
+        if (!bonusAlreadyClaimed && isWinnerCurrentlyLosing) {
+          // 4. Calculate Player Ranks based on their index in the submitted phase3List
+          // Index 0 = Rank 1 ... Index 7 = Rank 8
+          const winnerRankIndex = tournament.metadata[
+            winnerFactionKey
+          ].phase3List.findIndex((id) => id.equals(finalWinnerId));
+          const loserRankIndex = tournament.metadata[
+            loserFactionKey
+          ].phase3List.findIndex((id) => id.equals(loserId));
+
+          // Convert array index to Rank (1-8). If not found, set to 99 to fail the check safely.
+          const winnerRank = winnerRankIndex !== -1 ? winnerRankIndex + 1 : 99;
+          const loserRank = loserRankIndex !== -1 ? loserRankIndex + 1 : 99;
+
+          const isWinnerLowRank = winnerRank >= winnerTeam.players.length-2 && winnerRank <= winnerTeam.players.length;
+          const isLoserHighRank = loserRank >= 1 && loserRank <= 3;
+
+          if (isWinnerLowRank && isLoserHighRank) {
+            pointsToAdd += 3; // Base 2 + 3 Bonus = 5 Points Total
+
+            // Mark the Match and the Faction metadata
+            match.isGiantKill = true;
+            tournament.metadata[winnerFactionKey].bonusClaimed = true; // Lock it so they can't get it again
+
+            // Add player to Hall of Fame Tracking
+            if (!tournament.metadata.giantKillers) {
+              tournament.metadata.giantKillers = [];
+            }
+            tournament.metadata.giantKillers.push(finalWinnerId);
+
+            // Save the specific match flag and tournament metadata
+            await match.save();
+            await tournament.save();
+          }
         }
       }
 
+      // 5. Award the Points (Either 2 or 5)
       await awardTeamPoints(
         match.tournament,
         winnerTeam._id,
         pointsToAdd,
         "phase3_points",
       );
+
+      // 6. Check for Tournament Completion
       const pendingCount = await Match.countDocuments({
         tournament: match.tournament,
         status: { $ne: "Completed" },
       });
+
       if (pendingCount === 0) {
         await finalizeTournament(match.tournament);
-        // tournament.status = "Completed";
-        // await tournament.save();
       }
     }
 
@@ -599,29 +616,52 @@ export const startPhase2NemesisDraft = async (payload) => {
 
 export const submitPhase3List = async (payload) => {
   const { tournamentId, teamId, orderedPlayerList } = payload;
-  const tournament = await Tournament.findById(tournamentId).populate("teams");
+  
+  // We no longer need to populate "teams" just to check index 0
+  const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw new Error("Tournament not found");
 
   const team = await Team.findById(teamId);
+  if (!team) throw new Error("Team not found");
 
-  // DYNAMIC VALIDATION: Must submit exactly the number of players on the roster
+  // 1. DYNAMIC VALIDATION: Must submit exactly the number of players on the roster
   if (orderedPlayerList.length !== team.players.length) {
     throw new Error(`You must submit exactly ${team.players.length} players.`);
   }
 
-  // Identify if this is Team 1 or Team 2 in the metadata
-  const isTeam1 = tournament.teams[0]._id.equals(teamId);
+  // 2. Identify Faction and Save List
+  const faction1Id = tournament.metadata.faction1.teamId;
+  const faction2Id = tournament.metadata.faction2.teamId;
 
-  if (isTeam1) {
-    tournament.metadata.phase3Submissions.team1List = orderedPlayerList;
+  if (faction1Id && faction1Id.equals(teamId)) {
+    tournament.metadata.faction1.phase3List = orderedPlayerList;
+  } else if (faction2Id && faction2Id.equals(teamId)) {
+    tournament.metadata.faction2.phase3List = orderedPlayerList;
   } else {
-    tournament.metadata.phase3Submissions.team2List = orderedPlayerList;
+    throw new Error("This team is not assigned to a faction in this tournament.");
   }
+
+  // 3. Mark Team as Submitted
   team.teamSubmitted = true;
   await team.save();
+
+  // 4. Auto-Lock Phase 3 if both teams are done
+  // Check if both faction lists have been populated
+  const f1Done = tournament.metadata.faction1.phase3List && tournament.metadata.faction1.phase3List.length > 0;
+  const f2Done = tournament.metadata.faction2.phase3List && tournament.metadata.faction2.phase3List.length > 0;
+
+  if (f1Done && f2Done) {
+    tournament.metadata.isPhase3Locked = true;
+    console.log(`Tournament ${tournament.name} - Phase 3 is now LOCKED.`);
+    // You could also trigger your Phase 3 Fixture Generator here automatically
+  }
+
   await tournament.save();
+
   return {
-    message: "List submitted successfully. Waiting for opponent's list.",
+    message: tournament.metadata.isPhase3Locked
+      ? "List submitted successfully. Both teams are locked in!"
+      : "List submitted successfully. Waiting for opponent's list.",
   };
 };
 
@@ -635,7 +675,8 @@ export const generateIronCurtainMatches = async (tournamentId) => {
 
     if (!tournament) throw new Error("Tournament not found.");
 
-    const { team1List, team2List } = tournament.metadata.phase3Submissions;
+    const  team1List = tournament.metadata.faction1.phase3List;
+    const team2List = tournament.metadata.faction2.phase3List;
 
     // Validate that both teams have submitted their lists
     if (
@@ -722,7 +763,7 @@ export const generateIronCurtainMatches = async (tournamentId) => {
     });
 
     // Lock the submission so captains cannot change their lists after reveal
-    tournament.metadata.phase3Submissions.isLocked = true;
+    tournament.metadata.isPhase3Locked = true;
 
     await tournament.save({ session });
 
@@ -1077,49 +1118,6 @@ export const getGlobalPlayerLeaderboardclassico = async (tournamentId) => {
   ]);
 };
 
-//championship points leaderboard (team standings based on points)
-// export const getChampionshipLeaderboard = async (tournamentId) => {
-//   return await ChampionshipPoint.aggregate([
-//     {
-//       $match: {
-//         tournament: new mongoose.Types.ObjectId(tournamentId),
-//       },
-//     },
-//     // 1. Group by Team and sum points from all phases
-//     {
-//       $group: {
-//         _id: "$team",
-//         phase1: { $sum: "$phase1_points" },
-//         phase2: { $sum: "$phase2_points" },
-//         phase3: { $sum: "$phase3_points" },
-//         total: { $sum: "$total_points" },
-//       },
-//     },
-//     // 2. Sort by Total Points (Primary)
-//     { $sort: { total: -1 } },
-//     // 3. Join with Team collection for name and logo
-//     {
-//       $lookup: {
-//         from: "teams",
-//         localField: "_id",
-//         foreignField: "_id",
-//         as: "teamData",
-//       },
-//     },
-//     { $unwind: "$teamData" },
-//     {
-//       $project: {
-//         _id: 1,
-//         teamName: "$teamData.name",
-//         teamLogo: "$teamData.logo.url",
-//         phase1: 1,
-//         phase2: 1,
-//         phase3: 1,
-//         total: 1,
-//       },
-//     },
-//   ]);
-// };
 export const getChampionshipLeaderboard = async (tournamentId) => {
   return await MatchHistory.aggregate([
     {

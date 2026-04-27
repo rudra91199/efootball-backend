@@ -14,6 +14,7 @@ import { classicoRoutes } from "../modules/classico/classico.routes.js";
 import { championshipPointRoute } from "../modules/championshipPoint/championshipPoint.route.js";
 import { HallOfFameRoutes } from "../modules/hallOfFame/hallOfFame.routes.js";
 import { fixRoutes } from "../modules/fix/fix.routes.js";
+import { BroadcastTickerRoutes } from "../modules/Broadcast/broadcastTicker.route.js";
 
 const router = Router();
 
@@ -63,7 +64,7 @@ const moduleRoutes = [
     router: SeriesRoutes,
   },
   {
-    path: "/classico",
+    path: "/massacre",
     router: classicoRoutes,
   },
   {
@@ -77,6 +78,10 @@ const moduleRoutes = [
   {
     path: "/fix",
     router: fixRoutes,
+  },
+  {
+    path: "/broadcast-ticker",
+    router: BroadcastTickerRoutes,
   }
 ];
 

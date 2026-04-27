@@ -75,9 +75,29 @@ const createTournamentIntoDB = async (payload) => {
     const finalTournament = await newTournament.save();
     return { success: true, tournament: finalTournament };
   } else if (payload.type === "The Massacre Trilogy") {
+    console.log(payload.type);
+
     const newTournament = new Tournament({
       ...payload,
       type: "The Massacre Trilogy",
+      metadata:
+        payload.type === "The Massacre Trilogy"
+          ? {
+              faction1: {
+                teamId: null,
+                score: 0,
+                bonusClaimed: false,
+                phase3List: [],
+              },
+              faction2: {
+                teamId: null,
+                score: 0,
+                bonusClaimed: false,
+                phase3List: [],
+              },
+              isPhase3Locked: false,
+            }
+          : {},
     });
     const finalTournament = await newTournament.save();
     return { success: true, tournament: finalTournament };
@@ -109,18 +129,20 @@ const getSingleTournamentFromDB = async (tournamentId) => {
     {
       path: "phases.matches",
       populate: [
-        { path: "team1 team2 winner details.subMatches.player1 details.subMatches.player2" },
-        { path: "manOfTheMatch", select: "name" }
+        {
+          path: "team1 team2 winner details.subMatches.player1 details.subMatches.player2",
+        },
+        { path: "manOfTheMatch", select: "name" },
       ],
     },
-    { path: "stages.stageData" }
+    { path: "stages.stageData" },
   ];
 
   // 3. Conditional logic for Teams vs Solo Users
   if (isTeamType) {
     populations.push({
       path: "teams",
-      populate: { path: "players captain" }
+      populate: { path: "players captain" },
     });
   } else {
     // For Solo: Just populate the users directly (no nested players)

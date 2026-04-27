@@ -134,6 +134,71 @@ const changePasswordAdmin = async (userId, newPassword) => {
   return true;
 };
 
+
+export const updateProfileAdmin = async (userId, updateData) => {
+  // 1. Explicitly define allowed scalar fields to prevent mass-assignment
+  const allowedFields = [
+    "name",
+    "inGameUserName",
+    "inGameUserId",
+    "phone",
+    "phoneModel",
+    "role",
+    "baseTeamName",
+    "status", // Added status since this is an admin route
+  ];
+
+  const filteredData = {};
+
+  // 2. Filter the incoming data against allowed fields
+  Object.keys(updateData).forEach((key) => {
+    if (allowedFields.includes(key)) {
+      filteredData[key] = updateData[key];
+    }
+  });
+
+  // 3. Securely handle Cloudinary Image Upload
+  if (updateData.newImage) {
+    // Fetch the user first to safely get their CURRENT image public_id
+    // This prevents a malicious payload from deleting random cloudinary assets
+    const currentUser = await User.findById(userId);
+    
+    if (!currentUser) {
+      throw new ApiError(404, "User not found.");
+    }
+
+    // Destroy the old image if it exists
+    if (currentUser.image?.public_id) {
+      await cloudinary.uploader.destroy(currentUser.image.public_id);
+    }
+
+    // Upload the new image
+    const { secure_url, public_id } = await cloudinary.uploader.upload(
+      updateData.newImage,
+      {
+        upload_preset: "efootball",
+        transformation: { fetch_format: "auto", quality: "auto" },
+      }
+    );
+
+    // Attach the finalized image object to our clean filtered data
+    filteredData.image = { url: secure_url, public_id };
+  }
+
+  // 4. Update the database
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    { $set: filteredData },
+    { new: true, runValidators: true }
+  ).select("-password -__v"); 
+
+  if (!updatedUser) {
+    throw new ApiError(404, "User not found during update.");
+  }
+
+  return updatedUser;
+};
+
 const getAllUsersFromDB = async () => {
   const users = await User.find().select("-password");
   return users;
@@ -200,18 +265,97 @@ export async function findTournamentsForPlayer(playerId) {
   }
 }
 
-export async function generateGlobalPlayerLeaderboard() {
+export async function generateGlobalPlayerLeaderboard(options = {}) {
+  const {
+    timeframe = "all", // "all", "week", "month", "season"
+    weekType = "current", // "current", "last"
+    month = null, // 1-12
+    year = null, // e.g., 2025, 2026
+  } = options;
+
+  const now = new Date();
+  let startDate = null;
+  let endDate = null;
+
+  // Safely parse the year to an integer to prevent string concatenation bugs.
+  // Defaults to the current year if no year is provided.
+  let targetYear = year ? parseInt(year, 10) : now.getFullYear();
+
+  // Helper to get the most recent Monday at 00:00:00
+  const getCurrentWeekStart = () => {
+    const d = new Date(now);
+    const day = d.getDay() || 7; // Convert Sunday (0) to 7
+    d.setDate(d.getDate() - (day - 1));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  switch (timeframe) {
+    case "week":
+      const currentMonday = getCurrentWeekStart();
+      if (weekType === "last") {
+        // Last Week: From previous Monday to this Monday
+        startDate = new Date(currentMonday);
+        startDate.setDate(startDate.getDate() - 7);
+        endDate = new Date(currentMonday);
+      } else {
+        // Current Week: From this Monday to next Monday
+        startDate = new Date(currentMonday);
+        endDate = new Date(currentMonday);
+        endDate.setDate(endDate.getDate() + 7);
+      }
+      break;
+
+    case "month":
+      // Parse month (1-12) to JS index (0-11)
+      let targetMonthIndex = month ? parseInt(month, 10) - 1 : now.getMonth();
+
+      // ✨ SMART TIME-TRAVEL UPGRADE ✨
+      // If the user asks for a month that is in the future for the current year (e.g. November, while it's April)
+      // AND they didn't explicitly provide a year, automatically assume they meant LAST year.
+      if (!year && targetMonthIndex > now.getMonth()) {
+        targetYear -= 1;
+      }
+
+      // JS Date inherently handles month overflow. 
+      // If targetMonthIndex is 11 (Dec), 11 + 1 becomes 12, rolling gracefully to Jan 1st of the next year.
+      startDate = new Date(targetYear, targetMonthIndex, 1);
+      endDate = new Date(targetYear, targetMonthIndex + 1, 1); 
+      break;
+
+    case "season":
+      // Starts from Jan 1st of the target year to Jan 1st of the next year
+      startDate = new Date(targetYear, 0, 1); 
+      endDate = new Date(targetYear + 1, 0, 1); 
+      break;
+
+    case "all":
+    default:
+      startDate = null;
+      endDate = null;
+  }
+
+  // Build the initial match query
+  const initialMatchQuery = {
+    result: { $ne: "Pending" },
+  };
+
+  // Apply strict date boundaries if a timeframe is selected
+  if (startDate || endDate) {
+    initialMatchQuery.createdAt = {};
+    if (startDate) initialMatchQuery.createdAt.$gte = startDate;
+    if (endDate) initialMatchQuery.createdAt.$lt = endDate; // Strictly less than the end boundary
+  }
+
   try {
     const globalLeaderboard = await MatchHistory.aggregate([
       // Stage 1: Group all match records by player and calculate stats
       {
-        $match: {
-          result: { $ne: "Pending" },
-        },
+        $match: initialMatchQuery,
       },
-      // --- NEW: Sort matches by creation date (newest first) ---
+      // --- Sort matches by creation date (newest first) ---
       {
-        $sort: { createdAt: -1 }
+        $sort: { createdAt: -1 },
       },
       {
         $group: {
@@ -222,8 +366,8 @@ export async function generateGlobalPlayerLeaderboard() {
           draws: { $sum: { $cond: [{ $eq: ["$result", "Draw"] }, 1, 0] } },
           goalsScored: { $sum: "$scoreFor" },
           goalsConceded: { $sum: "$scoreAgainst" },
-          // --- NEW: Push all results into an array (already sorted newest to oldest) ---
-          allResults: { $push: "$result" }
+          // --- Push all results into an array (already sorted newest to oldest) ---
+          allResults: { $push: "$result" },
         },
       },
 
@@ -243,8 +387,8 @@ export async function generateGlobalPlayerLeaderboard() {
               else: 0,
             },
           },
-          // --- NEW: Take the top 5 results for recent form ---
-          recentForm: { $slice: ["$allResults", 5] }
+          // --- Take the top 5 results for recent form ---
+          recentForm: { $slice: ["$allResults", 5] },
         },
       },
 
@@ -282,8 +426,8 @@ export async function generateGlobalPlayerLeaderboard() {
       // Stage 7: Clean up unnecessary fields and Limit
       {
         $project: {
-          allResults: 0 // Remove the large array from final output to save bandwidth
-        }
+          allResults: 0, // Remove the large array from final output to save bandwidth
+        },
       },
       {
         $limit: 100,
@@ -309,7 +453,7 @@ export async function generatePlayerLeaderboard(tournamentId) {
       },
       // --- NEW: Sort matches by creation date (newest first) ---
       {
-        $sort: { createdAt: -1 }
+        $sort: { createdAt: -1 },
       },
       // Stage 2: Group records by player and calculate stats
       {
@@ -322,7 +466,7 @@ export async function generatePlayerLeaderboard(tournamentId) {
           goalsScored: { $sum: "$scoreFor" },
           goalsConceded: { $sum: "$scoreAgainst" },
           // --- NEW: Push all results into an array ---
-          allResults: { $push: "$result" }
+          allResults: { $push: "$result" },
         },
       },
 
@@ -334,7 +478,7 @@ export async function generatePlayerLeaderboard(tournamentId) {
             $add: [{ $multiply: ["$wins", 3] }, "$draws"],
           },
           // --- NEW: Take the top 5 results for recent form ---
-          recentForm: { $slice: ["$allResults", 5] }
+          recentForm: { $slice: ["$allResults", 5] },
         },
       },
 
@@ -365,9 +509,9 @@ export async function generatePlayerLeaderboard(tournamentId) {
       // Stage 7: Clean up unnecessary fields
       {
         $project: {
-          allResults: 0 // Keep API response clean
-        }
-      }
+          allResults: 0, // Keep API response clean
+        },
+      },
     ]);
 
     return leaderboard;
@@ -518,7 +662,10 @@ const getHeadToHeadStats = async (player1Id, player2Id) => {
       draws,
       player1Goals,
       player2Goals,
-      winRate: h2hMatches.length > 0 ? Math.round((player1Wins / h2hMatches.length) * 100) : 0,
+      winRate:
+        h2hMatches.length > 0
+          ? Math.round((player1Wins / h2hMatches.length) * 100)
+          : 0,
       matches: h2hMatches, // The actual list of past matches to display
     };
   } catch (error) {
@@ -721,7 +868,7 @@ export async function findAllCareerMilestones(playerId) {
   const playerTeamIds = playerTeams.map((t) => t._id);
 
   const wonTournaments = await Tournament.find({
-    $or: [{ champion: { $in: playerTeamIds } }, { champion: objectPlayerId }]
+    $or: [{ champion: { $in: playerTeamIds } }, { champion: objectPlayerId }],
   }).sort({ updatedAt: 1 });
 
   // --- 2. Fetch the player's entire match history, sorted chronologically ---
@@ -732,8 +879,10 @@ export async function findAllCareerMilestones(playerId) {
   // --- 3. Initialize tracking variables ---
   const milestones = {};
 
-  if (wonTournaments.length > 0) milestones.tournamentChampion = wonTournaments[0].updatedAt;
-  if (wonTournaments.length >= 3) milestones.multiChampion = wonTournaments[2].updatedAt;
+  if (wonTournaments.length > 0)
+    milestones.tournamentChampion = wonTournaments[0].updatedAt;
+  if (wonTournaments.length >= 3)
+    milestones.multiChampion = wonTournaments[2].updatedAt;
 
   let matchesPlayed = 0;
   let cumulativeWins = 0;
@@ -746,11 +895,13 @@ export async function findAllCareerMilestones(playerId) {
   // --- 4. Loop through history ---
   for (const match of history) {
     matchesPlayed++;
-    
+
     // Match appearance milestones
     if (!milestones.firstMatch) milestones.firstMatch = match.createdAt;
-    if (!milestones.veteran50 && matchesPlayed >= 50) milestones.veteran50 = match.createdAt;
-    if (!milestones.centurionMatches && matchesPlayed >= 100) milestones.centurionMatches = match.createdAt;
+    if (!milestones.veteran50 && matchesPlayed >= 50)
+      milestones.veteran50 = match.createdAt;
+    if (!milestones.centurionMatches && matchesPlayed >= 100)
+      milestones.centurionMatches = match.createdAt;
 
     // Win & Streak logic
     if (match.result === "Win") {
@@ -759,22 +910,30 @@ export async function findAllCareerMilestones(playerId) {
       currentUnbeatenStreak++;
 
       if (!milestones.firstWin) milestones.firstWin = match.createdAt;
-      if (!milestones.halfCenturyWins && cumulativeWins >= 50) milestones.halfCenturyWins = match.createdAt;
-      if (!milestones.centurionWins && cumulativeWins >= 100) milestones.centurionWins = match.createdAt;
+      if (!milestones.halfCenturyWins && cumulativeWins >= 50)
+        milestones.halfCenturyWins = match.createdAt;
+      if (!milestones.centurionWins && cumulativeWins >= 100)
+        milestones.centurionWins = match.createdAt;
 
-      if (!milestones.winStreak5 && currentWinStreak >= 5) milestones.winStreak5 = match.createdAt;
-      if (!milestones.winStreak10 && currentWinStreak >= 10) milestones.winStreak10 = match.createdAt;
-      if (!milestones.winStreakMaster && currentWinStreak >= 15) milestones.winStreakMaster = match.createdAt;
+      if (!milestones.winStreak5 && currentWinStreak >= 5)
+        milestones.winStreak5 = match.createdAt;
+      if (!milestones.winStreak10 && currentWinStreak >= 10)
+        milestones.winStreak10 = match.createdAt;
+      if (!milestones.winStreakMaster && currentWinStreak >= 15)
+        milestones.winStreakMaster = match.createdAt;
 
-      if (!milestones.unbeaten10 && currentUnbeatenStreak >= 10) milestones.unbeaten10 = match.createdAt;
-      if (!milestones.unbeaten20 && currentUnbeatenStreak >= 20) milestones.unbeaten20 = match.createdAt;
-
+      if (!milestones.unbeaten10 && currentUnbeatenStreak >= 10)
+        milestones.unbeaten10 = match.createdAt;
+      if (!milestones.unbeaten20 && currentUnbeatenStreak >= 20)
+        milestones.unbeaten20 = match.createdAt;
     } else if (match.result === "Draw") {
       currentWinStreak = 0;
       currentUnbeatenStreak++;
-      
-      if (!milestones.unbeaten10 && currentUnbeatenStreak >= 10) milestones.unbeaten10 = match.createdAt;
-      if (!milestones.unbeaten20 && currentUnbeatenStreak >= 20) milestones.unbeaten20 = match.createdAt;
+
+      if (!milestones.unbeaten10 && currentUnbeatenStreak >= 10)
+        milestones.unbeaten10 = match.createdAt;
+      if (!milestones.unbeaten20 && currentUnbeatenStreak >= 20)
+        milestones.unbeaten20 = match.createdAt;
     } else {
       currentWinStreak = 0;
       currentUnbeatenStreak = 0;
@@ -783,37 +942,51 @@ export async function findAllCareerMilestones(playerId) {
     // Goal logic (Single match & Cumulative)
     if (match.scoreFor > 0) {
       if (!milestones.firstGoal) milestones.firstGoal = match.createdAt;
-      
+
       // FIX: >= use করার ফলে যদি কেউ ৬ গোল করে, তবে তার ২,৩,৪,৫ গোলের সব মাইলস্টোনও একসাথে আনলক হয়ে যাবে!
-      if (!milestones.brace && match.scoreFor >= 2) milestones.brace = match.createdAt;
-      if (!milestones.hatTrickHero && match.scoreFor >= 3) milestones.hatTrickHero = match.createdAt;
-      if (!milestones.poker && match.scoreFor >= 4) milestones.poker = match.createdAt;
-      if (!milestones.glut && match.scoreFor >= 5) milestones.glut = match.createdAt;
-      if (!milestones.doubleHatTrick && match.scoreFor >= 6) milestones.doubleHatTrick = match.createdAt;
-      if (!milestones.tripleHatTrick && match.scoreFor >= 9) milestones.tripleHatTrick = match.createdAt;
+      if (!milestones.brace && match.scoreFor >= 2)
+        milestones.brace = match.createdAt;
+      if (!milestones.hatTrickHero && match.scoreFor >= 3)
+        milestones.hatTrickHero = match.createdAt;
+      if (!milestones.poker && match.scoreFor >= 4)
+        milestones.poker = match.createdAt;
+      if (!milestones.glut && match.scoreFor >= 5)
+        milestones.glut = match.createdAt;
+      if (!milestones.doubleHatTrick && match.scoreFor >= 6)
+        milestones.doubleHatTrick = match.createdAt;
+      if (!milestones.tripleHatTrick && match.scoreFor >= 9)
+        milestones.tripleHatTrick = match.createdAt;
 
       cumulativeGoals += match.scoreFor;
-      
+
       // FIX: Cumulative Goals Logic
-      if (!milestones.halfCenturyGoals && cumulativeGoals >= 50) milestones.halfCenturyGoals = match.createdAt;
-      if (!milestones.centuryClub && cumulativeGoals >= 100) milestones.centuryClub = match.createdAt;
-      if (!milestones.doubleCenturyGoals && cumulativeGoals >= 200) milestones.doubleCenturyGoals = match.createdAt;
+      if (!milestones.halfCenturyGoals && cumulativeGoals >= 50)
+        milestones.halfCenturyGoals = match.createdAt;
+      if (!milestones.centuryClub && cumulativeGoals >= 100)
+        milestones.centuryClub = match.createdAt;
+      if (!milestones.doubleCenturyGoals && cumulativeGoals >= 200)
+        milestones.doubleCenturyGoals = match.createdAt;
     }
 
     // Clean sheet logic
     if (match.scoreAgainst === 0) {
       cumulativeCleanSheets++;
-      if (!milestones.firstCleanSheet) milestones.firstCleanSheet = match.createdAt;
-      if (!milestones.cleanSheet10 && cumulativeCleanSheets >= 10) milestones.cleanSheet10 = match.createdAt;
-      if (!milestones.cleanSheetKing && cumulativeCleanSheets >= 50) milestones.cleanSheetKing = match.createdAt;
+      if (!milestones.firstCleanSheet)
+        milestones.firstCleanSheet = match.createdAt;
+      if (!milestones.cleanSheet10 && cumulativeCleanSheets >= 10)
+        milestones.cleanSheet10 = match.createdAt;
+      if (!milestones.cleanSheetKing && cumulativeCleanSheets >= 50)
+        milestones.cleanSheetKing = match.createdAt;
     }
 
     // MOTM logic
     if (match.isManOfTheMatch) {
       cumulativeMOTM++;
       if (!milestones.firstMOTM) milestones.firstMOTM = match.createdAt;
-      if (!milestones.motm10 && cumulativeMOTM >= 10) milestones.motm10 = match.createdAt;
-      if (!milestones.motm50 && cumulativeMOTM >= 50) milestones.motm50 = match.createdAt;
+      if (!milestones.motm10 && cumulativeMOTM >= 10)
+        milestones.motm10 = match.createdAt;
+      if (!milestones.motm50 && cumulativeMOTM >= 50)
+        milestones.motm50 = match.createdAt;
     }
   }
 
@@ -906,7 +1079,7 @@ const getPlayerComparison = async (player1Id, player2Id, tournamentId) => {
     // Helper function to dynamically calculate overall stats (Global or Tournament)
     const getOverallStats = async (playerId) => {
       const matchFilter = { player: playerId, result: { $ne: "Pending" } };
-      
+
       // If a specific tournament is selected, filter by it
       if (tournamentId && tournamentId !== "global") {
         matchFilter.tournament = new mongoose.Types.ObjectId(tournamentId);
@@ -924,31 +1097,54 @@ const getPlayerComparison = async (player1Id, player2Id, tournamentId) => {
             losses: { $sum: { $cond: [{ $eq: ["$result", "Loss"] }, 1, 0] } },
             goalsFor: { $sum: "$scoreFor" },
             goalsAgainst: { $sum: "$scoreAgainst" },
-            cleanSheets: { $sum: { $cond: [{ $eq: ["$scoreAgainst", 0] }, 1, 0] } },
-            allResults: { $push: "$result" }
-          }
+            cleanSheets: {
+              $sum: { $cond: [{ $eq: ["$scoreAgainst", 0] }, 1, 0] },
+            },
+            allResults: { $push: "$result" },
+          },
         },
         {
           $addFields: {
             winRate: {
               $cond: {
                 if: { $gt: ["$matches", 0] },
-                then: { $round: [{ $multiply: [{ $divide: ["$wins", "$matches"] }, 100] }, 0] },
-                else: 0
-              }
+                then: {
+                  $round: [
+                    { $multiply: [{ $divide: ["$wins", "$matches"] }, 100] },
+                    0,
+                  ],
+                },
+                else: 0,
+              },
             },
-            recentForm: { $slice: ["$allResults", 5] } // Last 5 matches form
-          }
+            recentForm: { $slice: ["$allResults", 5] }, // Last 5 matches form
+          },
         },
-        { $project: { allResults: 0, _id: 0 } }
+        { $project: { allResults: 0, _id: 0 } },
       ]);
 
-      return stats[0] || { matches: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, cleanSheets: 0, winRate: 0, recentForm: [] };
+      return (
+        stats[0] || {
+          matches: 0,
+          wins: 0,
+          draws: 0,
+          losses: 0,
+          goalsFor: 0,
+          goalsAgainst: 0,
+          cleanSheets: 0,
+          winRate: 0,
+          recentForm: [],
+        }
+      );
     };
 
     // Helper for Direct Head-to-Head stats
     const getDirectH2H = async () => {
-      const h2hFilter = { player: objectP1, opponent: objectP2, result: { $ne: "Pending" } };
+      const h2hFilter = {
+        player: objectP1,
+        opponent: objectP2,
+        result: { $ne: "Pending" },
+      };
       if (tournamentId && tournamentId !== "global") {
         h2hFilter.tournament = new mongoose.Types.ObjectId(tournamentId);
       }
@@ -957,16 +1153,22 @@ const getPlayerComparison = async (player1Id, player2Id, tournamentId) => {
         .sort({ createdAt: -1 })
         .populate("tournament", "name");
 
-      let p1Wins = 0, p2Wins = 0, draws = 0, p1Goals = 0, p2Goals = 0, p1CleanSheets = 0, p2CleanSheets = 0;
+      let p1Wins = 0,
+        p2Wins = 0,
+        draws = 0,
+        p1Goals = 0,
+        p2Goals = 0,
+        p1CleanSheets = 0,
+        p2CleanSheets = 0;
 
-      h2hMatches.forEach(match => {
+      h2hMatches.forEach((match) => {
         if (match.result === "Win") p1Wins++;
         else if (match.result === "Loss") p2Wins++;
         else draws++;
 
         p1Goals += match.scoreFor;
         p2Goals += match.scoreAgainst;
-        
+
         if (match.scoreAgainst === 0) p1CleanSheets++;
         if (match.scoreFor === 0) p2CleanSheets++;
       });
@@ -980,7 +1182,7 @@ const getPlayerComparison = async (player1Id, player2Id, tournamentId) => {
         player2Goals: p2Goals,
         player1CleanSheets: p1CleanSheets,
         player2CleanSheets: p2CleanSheets,
-        matches: h2hMatches.slice(0, 5) // Send only last 5 direct matches to save bandwidth
+        matches: h2hMatches.slice(0, 5), // Send only last 5 direct matches to save bandwidth
       };
     };
 
@@ -988,28 +1190,25 @@ const getPlayerComparison = async (player1Id, player2Id, tournamentId) => {
     const [player1Stats, player2Stats, headToHead] = await Promise.all([
       getOverallStats(objectP1),
       getOverallStats(objectP2),
-      getDirectH2H()
+      getDirectH2H(),
     ]);
 
     // Fetch basic user info
     const [p1Info, p2Info] = await Promise.all([
       User.findById(player1Id).select("name inGameUserName image"),
-      User.findById(player2Id).select("name inGameUserName image")
+      User.findById(player2Id).select("name inGameUserName image"),
     ]);
 
     return {
       player1: { info: p1Info, overall: player1Stats },
       player2: { info: p2Info, overall: player2Stats },
-      headToHead
+      headToHead,
     };
-
   } catch (error) {
     console.error("Error generating comparison:", error);
     throw new ApiError(500, "Failed to fetch comparison data.");
   }
 };
-
-
 
 export const UserServices = {
   registerUserIntoDb,
@@ -1018,6 +1217,7 @@ export const UserServices = {
   editProfile,
   changePassword,
   changePasswordAdmin,
+  updateProfileAdmin,
   //playerData
   getAllUsersFromDB,
   getUserBasicInfo,
@@ -1035,6 +1235,5 @@ export const UserServices = {
   findAllCareerMilestones,
   issueCardToPlayer,
   liftPlayerBan,
-  getPlayerComparison
-
+  getPlayerComparison,
 };

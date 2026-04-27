@@ -146,23 +146,29 @@ const tournamentSchema = new Schema(
       ],
     },
     metadata: {
-      // --- NEW: Future-Proof Completion Logic ---
+      // --- Future-Proof Completion Logic ---
       finalRoundName: {
         type: String,
-        default: "Grand Final", // Change this per tournament generation
+        default: "Grand Final",
       },
       giantKillers: [{ type: Schema.Types.ObjectId, ref: "users" }],
-      // ------------------------------------------
-
-      rmaTeamScore: { type: Number, default: 0 },
-      barcaTeamScore: { type: Number, default: 0 },
-      phase3Submissions: {
-        team1List: [{ type: Schema.Types.ObjectId, ref: "users" }],
-        team2List: [{ type: Schema.Types.ObjectId, ref: "users" }],
-        isLocked: { type: Boolean, default: false },
+      
+      // ==========================================
+      // GENERIC 1v1 FACTION TRACKING (Replaces RMA/Barca)
+      // ==========================================
+      faction1: {
+        teamId: { type: Schema.Types.ObjectId, refPath: "participantType" },
+        score: { type: Number, default: 0 },
+        bonusClaimed: { type: Boolean, default: false },
+        phase3List: [{ type: Schema.Types.ObjectId, ref: "users" }] // Moved list here for cleaner data
       },
-      rmaBonusClaimed: { type: Boolean, default: false },
-      barcaBonusClaimed: { type: Boolean, default: false },
+      faction2: {
+        teamId: { type: Schema.Types.ObjectId, refPath: "participantType" },
+        score: { type: Number, default: 0 },
+        bonusClaimed: { type: Boolean, default: false },
+        phase3List: [{ type: Schema.Types.ObjectId, ref: "users" }]
+      },
+      isPhase3Locked: { type: Boolean, default: false }
     },
   },
   { timestamps: true },

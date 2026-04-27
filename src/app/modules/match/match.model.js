@@ -64,7 +64,8 @@ const matchSchema = new Schema(
       ref: "Team", // Can be null until the match is completed
     },
     isGiantKill: {
-      type: Boolean,
+      type: String,
+      enum: ["Yes", "No","Possible"],
     },
     orangeCardedPlayers: [{ type: Schema.Types.ObjectId, ref: "users" }],
     details: {

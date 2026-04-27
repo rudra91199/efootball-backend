@@ -4,6 +4,7 @@ import { UserServices } from "./user.services.js";
 
 const registerUser = catchAsync(async (req, res) => {
   const response = await UserServices.registerUserIntoDb(req.body);
+  console.log(response)
   sendResponse(res, {
     statusCode: 201,
     success: true,
@@ -70,6 +71,20 @@ const changePasswordAdmin = catchAsync(async (req, res) => {
   });
 });
 
+const updateProfileAdmin = catchAsync(async (req, res) => {
+  const userId = req.params.userId; // or req.user._id depending on your auth middleware
+  const updateData = req.body;
+  const response = await UserServices.updateProfileAdmin(userId, updateData);
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Profile updated successfully",
+    data: response,
+  });
+});
+
+// player data
+
 const getAllUsers = catchAsync(async (req, res) => {
   const response = await UserServices.getAllUsersFromDB();
   sendResponse(res, {
@@ -101,8 +116,6 @@ const getUsersFroRegistration = catchAsync(async (req, res) => {
   });
 });
 
-// player data
-
 const getPlayerTournaments = catchAsync(async (req, res) => {
   const { playerId } = req.params;
   const tournaments = await UserServices.findTournamentsForPlayer(playerId);
@@ -115,7 +128,16 @@ const getPlayerTournaments = catchAsync(async (req, res) => {
 });
 
 const getGlobalLeaderboard = catchAsync(async (req, res) => {
-  const leaderboard = await UserServices.generateGlobalPlayerLeaderboard();
+  const { timeframe, weekType, month, year } = req.query;
+  const options = {
+    timeframe: timeframe || "all",
+    weekType: weekType || "current",
+    month: month ? parseInt(month) : null,
+    year: year ? parseInt(year) : null,
+  };
+  console.log("options =>", options);
+  const leaderboard =
+    await UserServices.generateGlobalPlayerLeaderboard(options);
   sendResponse(res, {
     statusCode: 200,
     success: true,
@@ -285,12 +307,13 @@ export const UserController = {
   loginUser,
   checkAuth,
   editProfile,
+  updateProfileAdmin,
+  //player data
   getAllUsers,
   getUserBasicInfo,
   getUsersFroRegistration,
   changePassword,
   changePasswordAdmin,
-  //player data
   getPlayerTournaments,
   getGlobalLeaderboard,
   getPlayerLeaderboard,

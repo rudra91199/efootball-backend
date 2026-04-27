@@ -4,6 +4,7 @@ import { classicoServices } from "./classico.services.js";
 
 const registerClassicoTeam = catchAsync(async (req, res) => {
   const response = await classicoServices.registerClassicoTeam(req.body);
+  console.log(response)
   sendResponse(res, {
     statusCode: 201,
     success: true,
