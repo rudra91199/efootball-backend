@@ -33,7 +33,7 @@ export const getLiveTickerData = async (req, res) => {
         tournament: { $in: liveTournamentIds } // <-- ONLY matches from LIVE tournaments
       })
       .sort({ updatedAt: -1 })
-      .limit(5) // Max 5 matches
+      .limit(10) // Max 10 matches
       .populate({ path: "team1", model: "users", select: "name inGameUserName image" })
       .populate({ path: "team2", model: "users", select: "name inGameUserName image" })
       .populate({ path: "winner", model: "users", select: "name inGameUserName image" });
