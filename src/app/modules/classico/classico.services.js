@@ -616,23 +616,24 @@ export const startPhase2NemesisDraft = async (payload) => {
 
 export const submitPhase3List = async (payload) => {
   const { tournamentId, teamId, orderedPlayerList } = payload;
-  
   // We no longer need to populate "teams" just to check index 0
   const tournament = await Tournament.findById(tournamentId);
+
+  
   if (!tournament) throw new Error("Tournament not found");
 
   const team = await Team.findById(teamId);
   if (!team) throw new Error("Team not found");
-
   // 1. DYNAMIC VALIDATION: Must submit exactly the number of players on the roster
   if (orderedPlayerList.length !== team.players.length) {
     throw new Error(`You must submit exactly ${team.players.length} players.`);
   }
-
+  
   // 2. Identify Faction and Save List
   const faction1Id = tournament.metadata.faction1.teamId;
   const faction2Id = tournament.metadata.faction2.teamId;
-
+  //console.log(faction1Id, faction2Id)
+  
   if (faction1Id && faction1Id.equals(teamId)) {
     tournament.metadata.faction1.phase3List = orderedPlayerList;
   } else if (faction2Id && faction2Id.equals(teamId)) {

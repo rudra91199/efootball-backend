@@ -47,6 +47,7 @@ const tournamentSchema = new Schema(
         "League + Knockout Team",
         "Champions Circuit",
         "The Massacre Trilogy",
+        "EC UCL",
       ],
       required: true,
     },
@@ -151,8 +152,11 @@ const tournamentSchema = new Schema(
         type: String,
         default: "Grand Final",
       },
+      uclGroupWinners: [
+        { type: Schema.Types.ObjectId, refPath: "participantType" },
+      ],
       giantKillers: [{ type: Schema.Types.ObjectId, ref: "users" }],
-      
+
       // ==========================================
       // GENERIC 1v1 FACTION TRACKING (Replaces RMA/Barca)
       // ==========================================
@@ -160,15 +164,15 @@ const tournamentSchema = new Schema(
         teamId: { type: Schema.Types.ObjectId, refPath: "participantType" },
         score: { type: Number, default: 0 },
         bonusClaimed: { type: Boolean, default: false },
-        phase3List: [{ type: Schema.Types.ObjectId, ref: "users" }] // Moved list here for cleaner data
+        phase3List: [{ type: Schema.Types.ObjectId, ref: "users" }], // Moved list here for cleaner data
       },
       faction2: {
         teamId: { type: Schema.Types.ObjectId, refPath: "participantType" },
         score: { type: Number, default: 0 },
         bonusClaimed: { type: Boolean, default: false },
-        phase3List: [{ type: Schema.Types.ObjectId, ref: "users" }]
+        phase3List: [{ type: Schema.Types.ObjectId, ref: "users" }],
       },
-      isPhase3Locked: { type: Boolean, default: false }
+      isPhase3Locked: { type: Boolean, default: false },
     },
   },
   { timestamps: true },

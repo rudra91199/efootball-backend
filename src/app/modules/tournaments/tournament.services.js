@@ -101,6 +101,23 @@ const createTournamentIntoDB = async (payload) => {
     });
     const finalTournament = await newTournament.save();
     return { success: true, tournament: finalTournament };
+  } else if (payload.type === "EC UCL") {
+    phases = [
+      { phaseName: "Phase 1: The Group Stage", phaseOrder: 1 },
+      { phaseName: "Phase 2: The Play-off Round", phaseOrder: 2 },
+      { phaseName: "Phase 3: The Knockout Stage", phaseOrder: 3 },
+    ];
+
+    const newTournament = new Tournament({
+      ...payload,
+      type: "EC UCL",
+      participantType: "users", // Solo tournament, so teams array holds User IDs
+      maxTeams: 16, // Hardcapped at 16 for this specific format
+      phases,
+    });
+
+    const finalTournament = await newTournament.save();
+    return { success: true, tournament: finalTournament };
   }
 };
 

@@ -15,6 +15,7 @@ import { championshipPointRoute } from "../modules/championshipPoint/championshi
 import { HallOfFameRoutes } from "../modules/hallOfFame/hallOfFame.routes.js";
 import { fixRoutes } from "../modules/fix/fix.routes.js";
 import { BroadcastTickerRoutes } from "../modules/Broadcast/broadcastTicker.route.js";
+import { UclRoutes } from "../modules/ucl/ucl.routes.js";
 
 const router = Router();
 
@@ -82,7 +83,11 @@ const moduleRoutes = [
   {
     path: "/broadcast-ticker",
     router: BroadcastTickerRoutes,
-  }
+  },
+  {
+    path: "/ucl",
+    router: UclRoutes,
+  },
 ];
 
 moduleRoutes.forEach((route) => {
