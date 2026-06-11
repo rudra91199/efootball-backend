@@ -1,4 +1,5 @@
 import ApiError from "../../errors/ApiError.js";
+import { updateMatchHistoryHelper } from "../../helpers/match.helper.js";
 import { ChampionshipPoint } from "../championshipPoint/championshipPoint.model.js";
 import { finalizeTournament } from "../hallOfFame/hallOfFame.Services.js";
 import { Knockout } from "../knockout/knockout.model.js";
@@ -6,9 +7,7 @@ import { runPhase3PagePlayoffEngine } from "../knockout/knockout.services.js";
 import { MatchHistory } from "../matchHistory/matchHistory.model.js";
 import { runPhase2GauntletEngine } from "../series/series.service.js";
 import { Tournament } from "../tournaments/tournament.model.js";
-import {
-  generatePhase1Leaderboard,
-} from "../tournaments/tournament.services.js";
+import { generatePhase1Leaderboard } from "../tournaments/tournament.services.js";
 import { User } from "../users/user.model.js";
 import { Match } from "./match.model.js";
 
@@ -902,41 +901,6 @@ const updateMatchScoreForLeagueAndKnockout = async (payload) => {
 
   return { message: "Match score updated successfully", match };
 };
-
-async function updateMatchHistoryHelper(match) {
-  const loser = match.winner.equals(match.team1) ? match.team2 : match.team1;
-
-  try {
-    await MatchHistory.updateOne(
-      { match: match._id, player: match.winner },
-      {
-        result: "Win",
-        scoreFor: match.winner.equals(match.team1)
-          ? match.team1_score
-          : match.team2_score,
-        scoreAgainst: match.winner.equals(match.team1)
-          ? match.team2_score
-          : match.team1_score,
-        matchDate: new Date(),
-      },
-    );
-    await MatchHistory.updateOne(
-      { match: match._id, player: loser },
-      {
-        result: "Loss",
-        scoreFor: loser.equals(match.team1)
-          ? match.team1_score
-          : match.team2_score,
-        scoreAgainst: loser.equals(match.team1)
-          ? match.team2_score
-          : match.team1_score,
-        matchDate: new Date(),
-      },
-    );
-  } catch (error) {
-    console.error("Failed to update MatchHistory:", error);
-  }
-}
 
 export async function updateTournamentMatchScore(payload) {
   const { _id: matchId, team1_score, team2_score, winnerId } = payload;

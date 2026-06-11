@@ -56,7 +56,7 @@ router.get(
 router.get(
   "/getUsersForRegistration",
   auth(USER_ROLES.admin, USER_ROLES.referee, USER_ROLES.player),
-  UserController.getUsersFroRegistration,
+  UserController.getUsersForRegistration,
 );
 
 router.get(

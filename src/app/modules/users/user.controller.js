@@ -106,8 +106,8 @@ const getUserBasicInfo = catchAsync(async (req, res) => {
   });
 });
 
-const getUsersFroRegistration = catchAsync(async (req, res) => {
-  const response = await UserServices.getAllUsersFroRegistration();
+const getUsersForRegistration = catchAsync(async (req, res) => {
+  const response = await UserServices.getAllUsersForRegistration();
   sendResponse(res, {
     statusCode: 200,
     success: true,
@@ -311,8 +311,8 @@ export const UserController = {
   //player data
   getAllUsers,
   getUserBasicInfo,
-  getUsersFroRegistration,
-  changePassword,
+  getUsersForRegistration,
+  changePassword, 
   changePasswordAdmin,
   getPlayerTournaments,
   getGlobalLeaderboard,

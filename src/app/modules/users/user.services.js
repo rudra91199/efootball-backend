@@ -212,9 +212,9 @@ const getUserBasicInfo = async (userId) => {
   return user;
 };
 
-const getAllUsersFroRegistration = async () => {
+const getAllUsersForRegistration = async () => {
   const users = await User.find().select(
-    "name email role inGameUserId inGameUserName baseTeamName",
+    "name email role inGameUserId inGameUserName baseTeamName image",
   );
   return users;
 };
@@ -1221,7 +1221,7 @@ export const UserServices = {
   //playerData
   getAllUsersFromDB,
   getUserBasicInfo,
-  getAllUsersFroRegistration,
+  getAllUsersForRegistration,
   findTournamentsForPlayer,
   generateGlobalPlayerLeaderboard,
   generatePlayerLeaderboard,

@@ -75,6 +75,8 @@ const submitPhase3Score = catchAsync(async (req, res) => {
   });
 });
 
+
+
 export const UclControllers = {
   generatePhase1,
   registerPlayers,

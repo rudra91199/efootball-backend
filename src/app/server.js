@@ -12,7 +12,7 @@ dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
 
 const connection = async () => {
   try {
-    await mongoose.connect(db_url_production);
+    await mongoose.connect(db_url_development);
     server = app.listen(config.port, () => {
       console.log(`Server is running on port ${config.port}`);
     });

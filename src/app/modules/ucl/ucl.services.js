@@ -382,80 +382,123 @@ const updateUclTwoLeggedScore = async (payload) => {
   const match = await Match.findById(matchId).populate("series knockout");
   if (!match) throw new ApiError(404, "Match not found");
 
-  // 1. Update the Individual Match
-  match.team1_score = team1_score;
-  match.team2_score = team2_score;
-  match.status = "Completed";
+  const series = await Series.findById(match.series._id).populate("matches");
+  if (!series) throw new ApiError(404, "Series not found");
 
-  if (team1_score > team2_score) match.winner = match.team1;
-  else if (team2_score > team1_score) match.winner = match.team2;
-  else match.winner = "Draw"; // Individual legs can end in a draw
+  // 1. Identify Leg 1 and Leg 2 matches from the series
+  const leg1 = series.matches.find((m) => m.round.includes("Leg 1"));
+  const leg2 = series.matches.find((m) => m.round.includes("Leg 2"));
 
-  await match.save();
-  await updateMatchHistoryHelper(match);
+  const isUpdatingLeg2 = match._id.toString() === leg2._id.toString();
 
-  // 2. Check Aggregate Score if part of a Series
-  if (match.series) {
-    const series = await Series.findById(match.series._id).populate("matches");
-    const isSeriesComplete = series.matches.every(
-      (m) => m.status === "Completed",
-    );
-
-    if (isSeriesComplete) {
-      let p1Aggregate = 0;
-      let p2Aggregate = 0;
-
-      // Sum goals across both legs
-      series.matches.forEach((m) => {
-        if (m.team1.toString() === series.player1.toString()) {
-          p1Aggregate += m.team1_score;
-          p2Aggregate += m.team2_score;
-        } else {
-          p1Aggregate += m.team2_score;
-          p2Aggregate += m.team1_score;
-        }
-      });
-
-      // Determine Tie Winner
-      if (p1Aggregate > p2Aggregate) {
-        series.winner = series.player1;
-      } else if (p2Aggregate > p1Aggregate) {
-        series.winner = series.player2;
-      } else {
-        // AGGREGATE IS TIED! Require penalty winner from Leg 2
-        if (!winnerId) {
-          // Revert match status so the admin can re-enter it with the penalty winner
-          match.status = "Scheduled";
-          await match.save();
-          throw new ApiError(
-            400,
-            `Aggregate score is tied ${p1Aggregate}-${p2Aggregate}! Please provide the penalty shootout winner.`,
-          );
-        }
-        series.winner = winnerId;
-      }
-
-      series.status = "Completed";
-      await series.save();
-
-      // Auto-Complete Knockout Stage if all series are done
-      const knockout = await Knockout.findById(match.knockout._id).populate(
-        "rounds.series",
+  // 2. Perform Validation for 2nd Leg specifically
+  if (isUpdatingLeg2) {
+    if (!leg1 || leg1.status !== "Completed") {
+      throw new ApiError(
+        400,
+        "Leg 1 must be completed before you can submit the score for Leg 2.",
       );
-      const allSeriesDone = knockout.rounds[0].series.every(
-        (s) => s.status === "Completed",
-      );
-      if (allSeriesDone) {
-        knockout.status = "Completed";
-        await knockout.save();
-        console.log("Phase 2 completely finished! Ready for Phase 3.");
+    }
+
+    // Calculate Aggregate Scores based on Series Player 1 and Player 2
+    let p1Aggregate = 0;
+    let p2Aggregate = 0;
+
+    // Add Leg 1 scores (already saved in DB)
+    if (leg1.team1.toString() === series.player1.toString()) {
+      p1Aggregate += leg1.team1_score;
+      p2Aggregate += leg1.team2_score;
+    } else {
+      p1Aggregate += leg1.team2_score;
+      p2Aggregate += leg1.team1_score;
+    }
+
+    // Add Leg 2 scores (from the incoming payload, NOT the DB yet)
+    if (match.team1.toString() === series.player1.toString()) {
+      p1Aggregate += team1_score;
+      p2Aggregate += team2_score;
+    } else {
+      p1Aggregate += team2_score;
+      p2Aggregate += team1_score;
+    }
+
+    // CORE RULE: If Aggregate is Tied, a winnerId MUST be provided
+    if (p1Aggregate === p2Aggregate) {
+      if (!winnerId) {
+        throw new ApiError(
+          400,
+          `Aggregate score is tied at ${p1Aggregate}-${p2Aggregate}. You MUST select a winner (via shootout) to submit this match.`,
+        );
       }
     }
   }
 
-  return { message: "Match updated successfully. Aggregate checked.", match };
+  // 3. Proceed with updating the individual match
+  match.team1_score = team1_score;
+  match.team2_score = team2_score;
+  match.status = "Completed";
+
+  // Individual leg logic: can be a draw if the aggregate rule above didn't block it
+  if (team1_score > team2_score) match.winner = match.team1;
+  else if (team2_score > team1_score) match.winner = match.team2;
+  else match.winner = null;
+
+  await match.save();
+  await updateMatchHistoryHelper(match);
+
+  // 4. Finalize Series if this was the 2nd Leg
+  if (isUpdatingLeg2 || series.matches.every((m) => m.status === "Completed")) {
+    // Fetch fresh series data to calculate final outcome
+    const updatedSeries = await Series.findById(match.series._id).populate(
+      "matches",
+    );
+    let finalP1Agg = 0;
+    let finalP2Agg = 0;
+
+    updatedSeries.matches.forEach((m) => {
+      if (m.team1.toString() === updatedSeries.player1.toString()) {
+        finalP1Agg += m.team1_score;
+        finalP2Agg += m.team2_score;
+      } else {
+        finalP1Agg += m.team2_score;
+        finalP2Agg += m.team1_score;
+      }
+    });
+
+    // Determine Official Series Winner
+    if (finalP1Agg > finalP2Agg) {
+      updatedSeries.winner = updatedSeries.player1;
+    } else if (finalP2Agg > finalP1Agg) {
+      updatedSeries.winner = updatedSeries.player2;
+    } else {
+      updatedSeries.winner = winnerId; // Tie-breaker applied
+    }
+
+    updatedSeries.status = "Completed";
+    await updatedSeries.save();
+
+    // Auto-Complete Knockout Stage if all series are done
+    const knockout = await Knockout.findById(match.knockout._id).populate(
+      "rounds.series",
+    );
+    const allSeriesDone = knockout.rounds[0].series.every(
+      (s) => s.status === "Completed",
+    );
+    if (allSeriesDone) {
+      knockout.status = "Completed";
+      await knockout.save();
+    }
+  }
+
+  return {
+    message: "Score updated successfully. Aggregate validation passed.",
+    match,
+  };
 };
 
+// ==========================================
+// GENERATE PHASE 3: THE BRACKET TOPOLOGY
+// ==========================================
 const generatePhase3Knockout = async (tournamentId) => {
   const tournament = await Tournament.findById(tournamentId);
   if (!tournament) throw new ApiError(404, "Tournament not found");
@@ -566,10 +609,14 @@ const generatePhase3Knockout = async (tournamentId) => {
   }
 
   // 5. Insert Initial QF Matches & History Data
+  let createdMatchIds = []; // Stores the real MongoDB IDs after insertion
+
   if (matchesToInsert.length > 0) {
     const createdMatches = await Match.insertMany(matchesToInsert);
 
     for (const match of createdMatches) {
+      createdMatchIds.push(match._id); // Capture the generated Mongoose _id
+
       await Series.findByIdAndUpdate(match.series, {
         $push: { matches: match._id },
       });
@@ -598,7 +645,7 @@ const generatePhase3Knockout = async (tournamentId) => {
   knockoutPhase3.rounds.push({
     roundName: "Bracket Phase",
     series: allSeriesIds,
-    matches: matchesToInsert.map((_, i) => matchesToInsert[i]._id), // Tracks initial matches
+    matches: createdMatchIds, // Uses the captured real ObjectIds
   });
   await knockoutPhase3.save();
 
@@ -614,87 +661,140 @@ const generatePhase3Knockout = async (tournamentId) => {
   return { success: true, message: "Phase 3 layout generated successfully!" };
 };
 
+// ==========================================
+// PHASE 3 SCORE SUBMISSION & AUTO-ADVANCEMENT
+// ==========================================
 const updateUclPhase3Score = async (payload) => {
   const { _id: matchId, team1_score, team2_score, winnerId } = payload;
 
   const match = await Match.findById(matchId).populate("series knockout");
   if (!match) throw new ApiError(404, "Match not found");
 
-  // 1. Process Individual Match Result
+  const series = await Series.findById(match.series._id).populate("matches");
+  if (!series) throw new ApiError(404, "Series not found");
+
+  let isUpdatingFinalLeg = false;
+
+  // --- 1. PRE-EMPTIVE VALIDATION BASED ON SERIES TYPE ---
+  if (series.bestOf === 2) {
+    // Logic for Quarter-Finals & Semi-Finals (Two Legs)
+    const leg1 = series.matches.find((m) => m.round.includes("Leg 1"));
+    const leg2 = series.matches.find((m) => m.round.includes("Leg 2"));
+
+    if (match._id.toString() === leg2._id.toString()) {
+      isUpdatingFinalLeg = true;
+
+      if (!leg1 || leg1.status !== "Completed") {
+        throw new ApiError(
+          400,
+          "Leg 1 must be completed before you can submit the score for Leg 2.",
+        );
+      }
+
+      // Calculate Aggregate: Leg 1 (DB) + Leg 2 (Incoming Payload)
+      let p1Aggregate = 0;
+      let p2Aggregate = 0;
+
+      // Add Leg 1 scores
+      if (leg1.team1.toString() === series.player1.toString()) {
+        p1Aggregate += leg1.team1_score;
+        p2Aggregate += leg1.team2_score;
+      } else {
+        p1Aggregate += leg1.team2_score;
+        p2Aggregate += leg1.team1_score;
+      }
+
+      // Add Leg 2 scores
+      if (match.team1.toString() === series.player1.toString()) {
+        p1Aggregate += team1_score;
+        p2Aggregate += team2_score;
+      } else {
+        p1Aggregate += team2_score;
+        p2Aggregate += team1_score;
+      }
+
+      // Block submission if aggregate is tied and no shootout winner is provided
+      if (p1Aggregate === p2Aggregate && !winnerId) {
+        throw new ApiError(
+          400,
+          `Aggregate score is tied at ${p1Aggregate}-${p2Aggregate}. You MUST select a winner (via shootout) to submit this match.`,
+        );
+      }
+    }
+  } else if (series.bestOf === 1) {
+    // Logic strictly for the Grand Final (Single Leg)
+    isUpdatingFinalLeg = true;
+
+    if (team1_score === team2_score && !winnerId) {
+      throw new ApiError(
+        400,
+        "The Grand Final cannot end in a draw. You MUST select a winner (via shootout).",
+      );
+    }
+  }
+
+  // --- 2. UPDATE INDIVIDUAL MATCH ---
   match.team1_score = team1_score;
   match.team2_score = team2_score;
   match.status = "Completed";
-  match.winner =
-    team1_score > team2_score
-      ? match.team1
-      : team2_score > team1_score
-        ? match.team2
-        : "Draw";
+
+  // Handle individual leg draw correctly (using null instead of "Draw")
+  if (team1_score > team2_score) match.winner = match.team1;
+  else if (team2_score > team1_score) match.winner = match.team2;
+  else match.winner = null;
 
   await match.save();
   await updateMatchHistoryHelper(match);
 
-  const series = await Series.findById(match.series._id).populate("matches");
-  const isSeriesComplete = series.matches.every(
-    (m) => m.status === "Completed",
-  );
-
-  // 2. Handle Series Completion & Progression Logic
-  if (isSeriesComplete && series.status !== "Completed") {
+  // --- 3. FINALIZE SERIES & ADVANCE BRACKET ---
+  if (
+    isUpdatingFinalLeg ||
+    series.matches.every((m) => m.status === "Completed")
+  ) {
+    const updatedSeries = await Series.findById(match.series._id).populate(
+      "matches",
+    );
     let seriesWinner = null;
 
-    if (series.bestOf === 2) {
-      // Aggregate scoring calculations for QF and SF
-      let p1Goals = 0;
-      let p2Goals = 0;
+    if (updatedSeries.bestOf === 2) {
+      // Re-calculate final aggregates natively from DB for safety
+      let finalP1Agg = 0;
+      let finalP2Agg = 0;
 
-      series.matches.forEach((m) => {
-        if (m.team1.toString() === series.player1.toString()) {
-          p1Goals += m.team1_score;
-          p2Goals += m.team2_score;
+      updatedSeries.matches.forEach((m) => {
+        if (m.team1.toString() === updatedSeries.player1.toString()) {
+          finalP1Agg += m.team1_score;
+          finalP2Agg += m.team2_score;
         } else {
-          p1Goals += m.team2_score;
-          p2Goals += m.team1_score;
+          finalP1Agg += m.team2_score;
+          finalP2Agg += m.team1_score;
         }
       });
 
-      if (p1Goals > p2Goals) seriesWinner = series.player1;
-      else if (p2Goals > p1Goals) seriesWinner = series.player2;
-      else {
-        if (!winnerId) {
-          match.status = "Scheduled"; // Reset match to allow penalty input
-          await match.save();
-          throw new ApiError(
-            400,
-            `Aggregate is tied (${p1Goals}-${p2Goals}). Shootout winner required.`,
-          );
-        }
-        seriesWinner = winnerId;
-      }
+      if (finalP1Agg > finalP2Agg) seriesWinner = updatedSeries.player1;
+      else if (finalP2Agg > finalP1Agg) seriesWinner = updatedSeries.player2;
+      else seriesWinner = winnerId; // Tie-breaker
     } else {
-      // Single leg logic (strictly for the Grand Final)
-      if (match.winner === "Draw" && !winnerId) {
-        match.status = "Scheduled";
-        await match.save();
-        throw new ApiError(
-          400,
-          "Grand Final matches cannot end in a draw. Please pass the shootout winnerId.",
-        );
-      }
-      seriesWinner = match.winner === "Draw" ? winnerId : match.winner;
+      // Grand Final Winner
+      seriesWinner = match.winner === null ? winnerId : match.winner;
     }
 
-    series.winner = seriesWinner;
-    series.status = "Completed";
-    await series.save();
+    updatedSeries.winner = seriesWinner;
+    updatedSeries.status = "Completed";
+    await updatedSeries.save();
 
-    // 3. Dynamic Advancement Router
-    await handleBracketAdvancement(series, seriesWinner, match.tournament);
+    // 4. DYNAMIC ADVANCEMENT ROUTER
+    // Pass the officially determined winner to advance them to the next bracket node
+    await handleBracketAdvancement(
+      updatedSeries,
+      seriesWinner,
+      match.tournament,
+    );
   }
 
   return {
     success: true,
-    message: "Match updated and bracket progression assessed.",
+    message: "Phase 3 match updated and bracket progression assessed.",
     match,
   };
 };
@@ -817,6 +917,9 @@ const handleBracketAdvancement = async (
   }
 };
 
+// Add this near your other functions
+
+
 export const UclServices = {
   generatePhase1GroupStage,
   registerUCLPlayers,
@@ -824,4 +927,5 @@ export const UclServices = {
   updateUclTwoLeggedScore,
   generatePhase3Knockout,
   updateUclPhase3Score,
+
 };
