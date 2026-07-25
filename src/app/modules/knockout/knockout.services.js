@@ -159,7 +159,7 @@ const getKnockoutById = async (knockoutId) => {
       select: "-details -subMatchesGenerated",
       populate: {
         path: "team1 team2 winner",
-        select: "name image inGameUserName",
+        select: "name image inGameUserName ",
         model: User,
       },
     })
@@ -168,7 +168,7 @@ const getKnockoutById = async (knockoutId) => {
       populate: [
         {
           path: "player1 player2",
-          select: "name image inGameUserName",
+          select: "name image inGameUserName activeYellowCards isBanned banLiftDate",
           model: User,
         },
         {
@@ -176,7 +176,7 @@ const getKnockoutById = async (knockoutId) => {
           select: "-details -subMatchesGenerated ",
           populate: {
             path: "team1 team2 winner",
-            select: "name image inGameUserName",
+            select: "name image inGameUserName activeYellowCards isBanned banLiftDate",
             model: User,
           },
         },

@@ -529,7 +529,7 @@ const getPlayerTournamentMatches = async (tournamentId, playerId) => {
     result: { $ne: "Pending" },
   })
     // Populate the opponent's details from the User schema
-    .populate("opponent", "name inGameUserName image")
+    .populate("opponent", "name inGameUserName image activeYellowCards isBanned banLiftDate")
     // Sort by most recent matches first
     .sort({ createdAt: -1 });
 
@@ -994,72 +994,88 @@ export async function findAllCareerMilestones(playerId) {
 }
 
 const issueCardToPlayer = async (issuerId, payload) => {
-  const { matchId, playerId, cardType, reason, tournamentId } = payload;
-  const player = await User.findById(playerId);
-  if (!player) return new ApiError(404, "Player not found.");
+  try {
+    console.log("Issuer:", issuerId, "Payload:", payload);
+    const { matchId, playerId, cardType, reason, tournamentId } = payload;
+    
+    const player = await User.findById(playerId);
+    if (!player) return { status: 404, message: "Player not found." }; // Adjust to your ApiError handler
 
-  let actionLog;
-  // --- Orange Card Logic ---
-  if (cardType === "Orange") {
-    // Add the player to the match's orange card list.
-    await Match.findByIdAndUpdate(matchId, {
-      $addToSet: { orangeCardedPlayers: playerId },
-    });
-  }
+    let actionLog;
 
-  // --- Red Card Logic ---
-  if (cardType === "Red") {
-    player.isBanned = true;
-    const banLiftDate = new Date();
-    banLiftDate.setDate(banLiftDate.getDate() + 2); // Add 2 days
-    player.banLiftDate = banLiftDate;
-  }
+    // --- Orange Card Logic ---
+    if (cardType === "Orange") {
+      await Match.findByIdAndUpdate(matchId, {
+        $addToSet: { orangeCardedPlayers: playerId },
+      });
+    }
 
-  // --- Yellow Card Logic ---
-  // (A yellow card is active for 7 days. A second yellow within this time results in a Red Card.)
-  if (cardType === "Yellow") {
-    const now = new Date();
-    // Check if there are any non-expired yellow cards
-    const hasActiveYellow = player.activeYellowCards.some(
-      (card) => card.expiryDate > now,
-    );
-
-    if (hasActiveYellow) {
-      // This is the second active yellow card -> becomes a Red Card
+    // --- Red Card Logic ---
+    if (cardType === "Red") {
       player.isBanned = true;
       const banLiftDate = new Date();
-      banLiftDate.setDate(banLiftDate.getDate() + 2); // 2-day ban
+      banLiftDate.setDate(banLiftDate.getDate() + 2); // Add 2 days
       player.banLiftDate = banLiftDate;
-      player.activeYellowCards = []; // Clear the yellow cards as they've resulted in a red
-    } else {
-      // This is the first active yellow card
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 7); // Set expiry to 1 week from now
-      // We will create the disciplinary log first to get its ID
+    }
+
+    // --- Yellow Card Logic ---
+    if (cardType === "Yellow") {
+      const now = new Date();
+      const hasActiveYellow = player.activeYellowCards.some(
+        (card) => card.expiryDate > now,
+      );
+
+      console.log("Has Active Yellow:", hasActiveYellow);
+
+      if (hasActiveYellow) {
+        // Second yellow -> becomes Red
+        player.isBanned = true;
+        const banLiftDate = new Date();
+        banLiftDate.setDate(banLiftDate.getDate() + 2);
+        player.banLiftDate = banLiftDate;
+        player.activeYellowCards = [];
+      } else {
+        // First yellow
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 7);
+        
+        console.log("Attempting to create DisciplinaryAction...");
+        
+        // 🔥 If the crash happens, it happens right here:
+        actionLog = await DisciplinaryAction.create({
+          player: playerId,
+          tournament: tournamentId || null,
+          cardType,
+          reason,
+          issuedBy: issuerId,
+        });
+        
+        console.log("Successfully created ActionLog:", actionLog._id);
+        player.activeYellowCards.push({ cardId: actionLog._id, expiryDate });
+      }
+    }
+
+    await player.save();
+
+    // --- Fallback / History Log ---
+    if (!actionLog) {
       actionLog = await DisciplinaryAction.create({
         player: playerId,
-        tournament: tournamentId,
+        match: cardType === "Orange" ? matchId : null, // FIX: Changed "orange" to "Orange"
+        tournament: tournamentId || null,
         cardType,
         reason,
         issuedBy: issuerId,
       });
-      player.activeYellowCards.push({ cardId: actionLog._id, expiryDate });
     }
-  }
 
-  await player.save();
-  // ... (Log the action in DisciplinaryAction collection for records) ...
-  if (!actionLog) {
-    actionLog = await DisciplinaryAction.create({
-      player: playerId,
-      match: cardType === "orange" ? matchId : null,
-      tournament: tournamentId,
-      cardType,
-      reason,
-      issuedBy: issuerId,
-    });
+    return null;
+
+  } catch (error) {
+    // THIS WILL PRINT THE EXACT REASON IT IS CRASHING IN YOUR BACKEND TERMINAL
+    console.error("🔥 CRASH IN issueCardToPlayer:", error);
+    throw error; 
   }
-  return null;
 };
 
 const liftPlayerBan = async (playerId) => {
