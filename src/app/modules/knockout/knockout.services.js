@@ -159,7 +159,7 @@ const getKnockoutById = async (knockoutId) => {
       select: "-details -subMatchesGenerated",
       populate: {
         path: "team1 team2 winner",
-        select: "name image inGameUserName ",
+        select: "name image inGameUserName activeYellowCards isBanned banLiftDate",
         model: User,
       },
     })
