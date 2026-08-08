@@ -75,7 +75,17 @@ const submitPhase3Score = catchAsync(async (req, res) => {
   });
 });
 
-
+const forceSyncBracket = catchAsync(async (req, res) => {
+  const { tournamentId } = req.params;
+  const response = await UclServices.syncPhase3Bracket(tournamentId);
+  
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Bracket synced successfully",
+    data: response,
+  });
+});
 
 export const UclControllers = {
   generatePhase1,
@@ -84,4 +94,6 @@ export const UclControllers = {
   submitTwoLeggedScore,
   generatePhase3,
   submitPhase3Score,
+  forceSyncBracket
+
 };

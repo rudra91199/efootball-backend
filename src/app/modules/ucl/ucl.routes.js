@@ -41,5 +41,11 @@ router.patch(
   UclControllers.submitPhase3Score,
 );
 
+// Using GET so you can easily trigger it from a browser or Postman if needed
+router.get(
+  "/sync-bracket/:tournamentId",
+  auth(USER_ROLES.admin),
+  UclControllers.forceSyncBracket
+);
 
 export const UclRoutes = router;
